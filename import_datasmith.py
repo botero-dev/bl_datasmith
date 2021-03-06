@@ -10,7 +10,7 @@ import hashlib
 import shutil
 from os import path
 from .data_types import UDMesh, Node, sanitize_name
-from mathutils import Matrix, Vector, Euler
+from mathutils import Matrix, Vector, Euler, Quaternion
 
 import logging
 log = logging.getLogger("bl_datasmith")
@@ -2435,10 +2435,11 @@ import xml.etree.ElementTree as ET
 
 
 def handle_transform(node, iter):
-        attr = node.attrib
-        loc = (attr["tx"], attr["ty"], attr["tz"])
-        rot = (attr["qw"], attr["qx"], attr["qy"], attr["qz"])
-        scale = (attr["sx"], attr["sy"], attr["sz"])
+        p = lambda x: float(node.attrib[x])
+        loc =   (p("tx"), p("ty"), p("tz"))
+        print('LOC', loc)
+        rot =   (p("qw"), p("qx"), p("qy"), p("qz"))
+        scale = (p("sx"), p("sy"), p("sz"))
 
         action, closing = next(iter)
         assert action == "end"
@@ -2450,7 +2451,7 @@ def handle_transform(node, iter):
 def handle_color(node, iter):
         attr = node.attrib
         use_temp = attr['usetemp']
-        
+
         color = (attr['R'], attr['G'], attr['B'])
 
         action, closing = next(iter)
@@ -2459,30 +2460,38 @@ def handle_color(node, iter):
 
         return color
 
-def unhandled(node, iter):
+def unhandled(_ctx, node, iter):
         print (f"<{node.tag} UNHANDLED>")
         for action, child in iter:
-                if action == "end" and child == node:
+                if child == node:
+                        assert action == "end"
                         return
 
-def handle_actormesh(node, iter):
+def fill_actor_mesh(target, node, iter):
+        check_close(node, iter)
+        attr = node.attrib
+        target["mesh"] = attr["name"]
+
+def handle_actormesh(uscene, node, iter):
         print("found ActorMesh")
-        actor = {}
+        actor_name = node.attrib["name"]
+        actor = {
+                "name": actor_name,
+                "type": 'ActorMesh'
+        }
+        filler_map = {
+                "Transform":  fill_transform,
+                "mesh":  fill_actor_mesh,
+        }
         for action, child in iter:
                 if action == 'end':
                         break
-                elif child.tag == "mesh":
-                        actor["mesh"] = child.attrib["name"]
-                        close, _ = next(iter)
-                        assert close == "end"
-                elif child.tag == "Transform":
-                        actor["transform"] = handle_transform(child, iter)
-                else:
-                        unhandled(child, iter)
+                handler = filler_map.get(child.tag, unhandled)
+                handler(actor, child, iter)
 
         assert child == node
         assert action == 'end'
-        print(f"actor: {actor}")
+        uscene["actors"][actor_name] = actor
         return actor
 
 def handle_value(node, iter):
@@ -2491,14 +2500,9 @@ def handle_value(node, iter):
         assert closing == node
 
         return float(node.attrib["value"])
-                        
-def unhandled2(_target, node, iter):
-        print (f"<{node.tag} UNHANDLED>")
-        for action, child in iter:
-                if action == "end" and child == node:
-                        return
 
-def handle_light(node, iter):
+
+def handle_light(uscene, node, iter):
         light = {}
         filler_map = {
                 "Transform":  fill_transform,
@@ -2507,9 +2511,9 @@ def handle_light(node, iter):
         for action, child in iter:
                 if action == 'end':
                         break
-                handler = filler_map.get(child.tag, unhandled2)
+                handler = filler_map.get(child.tag, unhandled)
                 handler(light, child, iter)
-                                
+
         assert node == child
         print(f"light: {light}")
         return light
@@ -2528,17 +2532,17 @@ def fill_light_color(target, node, iter):
 
 def fill_transform(target, node, iter):
         check_close(node, iter)
-        attr = node.attrib
 
-        loc = (attr["tx"], attr["ty"], attr["tz"])
-        rot = (attr["qw"], attr["qx"], attr["qy"], attr["qz"])
-        scale = (attr["sx"], attr["sy"], attr["sz"])
+        p = lambda x: float(node.attrib[x])
+        loc =   (p("tx"), p("ty"), p("tz"))
+        rot =   (p("qw"), p("qx"), p("qy"), p("qz"))
+        scale = (p("sx"), p("sy"), p("sz"))
 
         target["transform"] = (loc, rot, scale)
 
 
 
-def handle_camera(node, iter):
+def handle_camera(uscene, node, iter):
         data = {}
         for action, child in iter:
                 if action == 'end':
@@ -2548,8 +2552,8 @@ def handle_camera(node, iter):
                 elif child.tag == "FocalLength":
                         data["focal_length"] = handle_value(child, iter)
                 else:
-                        unhandled(child, iter)
-                                
+                        unhandled(uscene, child, iter)
+
         assert child == node
         assert action == 'end'
         print(f"camera: {data}")
@@ -2557,22 +2561,118 @@ def handle_camera(node, iter):
 
 
 def fill_mesh_material(mesh, node, iter):
-        assert node == next(iter)
+        assert next(iter) == ("end", node)
         id = node.attrib["id"]
         name = node.attrib["name"]
         mesh["materials"][id] = name
 
-def load_file(mesh, node, iter):
-        assert node == next(iter)
-        mesh["data"] = node.attrib["path"]
-        
 
-def handle_staticmesh(node, iter):
+import struct
+
+# don't like this much, maybe we should benchmark specifying sizes directly
+def unpack_from_file(format, file):
+        length = struct.calcsize(format)
+        return struct.unpack(format, file.read(length))
+
+def read_string(buffer):
+        string_size = unpack_from_file("<I", buffer)[0]
+        string = buffer.read(string_size)
+        return string
+
+def load_file(mesh, node, iter):
+        assert next(iter) == ("end", node)
+        path = node.attrib["path"]
+        full_path = "%s/%s" % (import_ctx["dir_path"], path)
+        mesh["path"] = full_path
+        with open(full_path, "rb") as f:
+                log.debug(f"at {f.tell()}:")
+                version, file_size = unpack_from_file("<II", f)
+                log.debug(f"version:{version}, size:{file_size}")
+                log.debug(f"at {f.tell()}:")
+                file_start = f.tell()
+                name = read_string(f)
+                log.debug(f"name: {name}")
+                log.debug(f"at {f.tell()}:")
+
+                # some filler stuff, TODO: check if these are always the same
+                assert b'\x00\x01\x00\x00\x00' == f.read(5)
+                assert b"SourceModels\x00" == read_string(f)
+                assert b"StructProperty\x00" == read_string(f)
+                assert b"\x00\x00\x00\x00\x00\x00\x00\x00" == f.read(8)
+                assert b"DatasmithMeshSourceModel\x00" == read_string(f)
+                assert b"\x00" * 25 == f.read(25)
+
+                mesh_size, mesh_size_2 = unpack_from_file("<II", f)
+                assert mesh_size == mesh_size_2
+                assert b'\x7d\x00\x00\x00\x00\x00\x00\x00' == f.read(8)
+
+                mesh_start = f.tell()
+                assert b'\x01\x00\x00\x00' == f.read(4) # mesh version
+                assert b'\x00\x00\x00\x00' == f.read(4) # mesh lic? version
+
+                num_tris = unpack_from_file("<I", f)[0]
+                tris_material_indices = np.frombuffer(f.read(num_tris * 4), dtype=np.int32)
+                mesh["material_indices"] = tris_material_indices
+
+                num_smoothing_groups = unpack_from_file("<I", f)[0]
+                assert num_tris == num_smoothing_groups
+                smoothing_groups = np.frombuffer(f.read(num_smoothing_groups * 4), dtype=np.int32)
+                mesh["smoothing_groups"] = smoothing_groups
+
+                num_vertices = unpack_from_file("<I", f)[0]
+                vertices = np.frombuffer(f.read(num_vertices * 3 * 4), dtype=np.float32)
+                mesh["vertices"] = vertices
+
+                # wedges / vertexloops are the number of triangle indices
+                num_wedges = unpack_from_file("<I", f)[0]
+                triangle_indices = np.frombuffer(f.read(num_wedges * 4), dtype=np.int32)
+                mesh["indices"] = triangle_indices
+
+                num_tangents_x = unpack_from_file("<I", f)[0]
+                assert num_tangents_x == 0
+                num_tangents_y = unpack_from_file("<I", f)[0]
+                assert num_tangents_y == 0
+                num_normals = unpack_from_file("<I", f)[0]
+                assert num_normals == num_wedges
+
+                normals = np.frombuffer(f.read(num_wedges * 4 * 3), dtype=np.float32)
+                normals = normals.reshape((-1, 3))
+                mesh["normals"] = normals
+
+                all_uvs = []
+                for uv_idx in range(8):
+                        num_uvs = unpack_from_file("<I", f)[0]
+                        uvs = np.frombuffer(f.read(num_uvs * 4 * 2), dtype=np.float32)
+                        uvs = uvs.reshape((-1, 2))
+                        all_uvs.append(uvs)
+
+                mesh["uvs"] = all_uvs
+
+                num_vertex_colors = unpack_from_file("<I", f)[0]
+                vertex_colors = np.frombuffer(f.read(num_vertex_colors * 4), dtype=np.uint8)
+                vertex_colors = vertex_colors.reshape((-1, 4))
+                mesh["vertex_colors"] = vertex_colors
+
+                mat_idx_to_import_idx_num = unpack_from_file("<I", f)[0]
+                assert mat_idx_to_import_idx_num == 0
+
+                mesh_end = f.tell()
+                mesh_calculated_size = mesh_end - mesh_start
+                assert mesh_size == mesh_calculated_size
+
+                assert b'\x00' * 20 == f.read(20)
+                file_end = f.tell()
+                file_calc_size = file_end - file_start
+                assert file_size == file_calc_size
+
+
+def handle_staticmesh(uscene, node, iter):
+        mesh_name = node.attrib["name"] # see also: label
         mesh = {
-                "materials": {}
+                "name": mesh_name,
+                "materials": {},
         }
-        mesh["name"] = node.attrib["name"] # see also: label
-        
+
         filler_map = {
                 "Material":  fill_mesh_material,
                 "file":      load_file,
@@ -2581,50 +2681,105 @@ def handle_staticmesh(node, iter):
         }
         for action, child in iter:
                 if action == 'end':
+                        assert child == node
                         break
-                handler = filler_map.get(child.tag, unhandled2)
+                handler = filler_map.get(child.tag, unhandled)
                 handler(mesh, child, iter)
-                                
         assert node == child
-        print(f"mesh: {mesh}")
+
+        # all data should be loaded by now, so we just add/update the mesh
+        bl_mesh = bpy.data.meshes.new(mesh["name"])
+        verts, indices = mesh["vertices"], mesh["indices"]
+        verts = verts * 0.01
+        num_vertices = len(verts) // 3
+        bl_mesh.vertices.add(num_vertices)
+        num_indices = len(indices)
+        bl_mesh.loops.add(num_indices)
+        num_tris = num_indices//3
+        bl_mesh.polygons.add(num_tris)
+
+        bl_mesh.vertices.foreach_set("co", verts)
+        def loop_total_gen():
+                while True:
+                        yield 3
+        bl_mesh.polygons.foreach_set("loop_start", range(0, num_indices, 3))
+        bl_mesh.polygons.foreach_set("loop_total", [3] * num_tris)
+        bl_mesh.polygons.foreach_set("vertices", indices)
+
+        bl_mesh.update(calc_edges=True)
+
+        mesh["bl_mesh"] = bl_mesh
+        print(f"mesh finished: {mesh['name']}")
+        uscene["meshes"][mesh_name] = mesh
         return mesh
-                
-def handle_root_tag(node, iter):
+
+def handle_root_tag(uscene, node, iter):
         root_tags = {
                 "ActorMesh":  handle_actormesh,
                 "Light":      handle_light,
                 "Camera":     handle_camera,
                 "StaticMesh": handle_staticmesh,
         }
-        
+
         print(f"handleing {node.tag}")
         handler = root_tags.get(node.tag, unhandled)
-        handler(node, iter)
-
+        result = handler(uscene, node, iter)
+        return result
 
 def handle_scene(iter):
+
+        uscene = {
+                "meshes": {},
+                "actors": {},
+        }
+
         action, root = next(iter)
         assert root.tag == "DatasmithUnrealScene"
         assert action == "start"
         for action, child in iter:
-                if action == "start":
-                        handle_root_tag(child, iter)
-                else:
-                        print(f"finished scene! {child}")
-                        assert child == root
-                        
-        
-        
+                if action == "end":
+                        break
+                handle_root_tag(uscene, child, iter)
+        assert child == root
+        print("finished parsing the xml, doing post process")
+
+        actors = uscene["actors"]
+        meshes = uscene["meshes"]
+        for actor_name in actors:
+                actor = actors[actor_name]
+                data = None
+                if actor["type"] == 'ActorMesh':
+                        mesh_name = actor["mesh"]
+                        data = meshes[mesh_name]["bl_mesh"]
+                bl_obj = bpy.data.objects.new(actor_name, data)
+                transform = actor["transform"]
+                print("processing", actor_name, transform)
+                mat_loc = Matrix.Translation(np.array(transform[0]) * 0.01)
+                mat_rot = Quaternion(transform[1]).to_matrix()
+                mat_sca = Matrix.Diagonal(transform[2])
+                mat_out = mat_loc.to_4x4() @ mat_rot.to_4x4() @ mat_sca.to_4x4()
+                bl_obj.matrix_world = mat_out
+                master_collection = bpy.data.collections[0]
+                master_collection.objects.link(bl_obj)
+
+        print(f"finished scene! {child}")
+
+import_ctx = {}
 
 def load(context, kwargs, file_path):
+        start_time = time.monotonic()
         log.info(f"loading file: {file_path}")
         log.info(f"args: {kwargs}")
+        import_ctx["dir_path"] = path.dirname(file_path)
         indent = ""
         with open(file_path) as f:
                 iter = ET.iterparse(f, events=('start', 'end'))
                 handle_scene(iter)
 
-        log.info("export finished")
+        end_time = time.monotonic()
+        total_time = end_time - start_time
+
+        log.info(f"import finished in {total_time} seconds")
 
 
 def load_wrapper(*, context, filepath, **kwargs):
@@ -2644,6 +2799,7 @@ def load_wrapper(*, context, filepath, **kwargs):
 		log.addHandler(handler)
 		log.setLevel(logging.DEBUG)
 		handler.setLevel(logging.DEBUG)
+		logging.basicConfig(level=logging.DEBUG)
 	try:
 		from os import path
 		basepath, ext = path.splitext(filepath)
