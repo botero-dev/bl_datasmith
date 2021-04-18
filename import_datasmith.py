@@ -2604,7 +2604,7 @@ def fill_mesh_material(mesh, node, iter):
         assert next(iter) == ("end", node)
         id = node.attrib["id"]
         name = node.attrib["name"]
-        mesh["materials"][id] = name
+        mesh["materials"].append((id, name))
 
 
 import struct
@@ -2620,8 +2620,7 @@ def read_string(buffer):
         return string
 
 def load_udsmesh_file(mesh, node, iter):
-        n = next(iter)
-        assert n == ("end", node)
+        check_close(node, iter)
         path = node.attrib["path"]
         full_path = "%s/%s" % (import_ctx["dir_path"], path)
         mesh["path"] = full_path
@@ -2790,7 +2789,7 @@ def handle_staticmesh(uscene, node, iter):
         mesh_name = node.attrib["name"] # see also: label
         mesh = {
                 "name": mesh_name,
-                "materials": {},
+                "materials": [],
         }
 
         filler_map = {
@@ -2870,6 +2869,7 @@ def handle_scene(iter):
                 "actors":    [],
                 "materials": {},
                 "meshes":    {},
+                "textures":  {},
         }
 
         action, root = next(iter)
@@ -2880,30 +2880,86 @@ def handle_scene(iter):
                         break
                 handle_root_tag(uscene, child, iter)
         assert child == root
-        print("finished parsing the xml, doing post process")
+        log.info("finished parsing the xml, doing post process")
 
+        log.info("linking materials")
         materials = uscene["materials"]
         for material in materials.values():
                 link_material(uscene, material)
 
+        log.info("linking meshes")
         meshes = uscene["meshes"]
         for mesh in meshes.values():
                 link_mesh(uscene, mesh)
 
+        log.info("linking actors")
         actors = uscene["actors"]
         for actor in actors:
                 link_actor(uscene, actor)
 
         print(f"finished scene! {child}")
 
+def color_from_string(color_string):
+        r = 0
+        g = 0
+        b = 0
+        a = 0
+        cursor = 0
+        cursor_end = 0
+        
+        assert color_string[cursor_end:cursor_end+3] == "(R="
+        cursor = cursor_end + 3
+        cursor_end = color_string.index(',', cursor)
+        r = float(color_string[cursor: cursor_end])
+        
+        assert color_string[cursor_end:cursor_end+3] == ",G="
+        cursor = cursor_end + 3
+        cursor_end = color_string.index(',', cursor)
+        g = float(color_string[cursor: cursor_end])
+        
+        assert color_string[cursor_end:cursor_end+3] == ",B="
+        cursor = cursor_end + 3
+        cursor_end = color_string.index(',', cursor)
+        b = float(color_string[cursor: cursor_end])
+        
+        assert color_string[cursor_end:cursor_end+3] == ",A="
+        cursor = cursor_end + 3
+        cursor_end = color_string.index(')', cursor)
+        a = float(color_string[cursor: cursor_end])
+
+        return (r, g, b, a)
+        
 
 def link_material(uscene, material):
         material_name = material["name"]
         bl_mat = bpy.data.materials.new(material_name)
         material["bl_mat"] = bl_mat
 
+        color = (1, 1, 1, 1)
+        color_prop = material.get("Color")
+        if color_prop:
+                color = color_from_string(color_prop)
+
+        blend_method = 'OPAQUE'
+        opacity_prop = material.get("Opacity")
+        if opacity_prop:
+                # set alpha inside color
+                color = color[0:3] + (float(opacity_prop), )
+                blend_method = 'BLEND'
+
+        bl_mat.diffuse_color = color
+        bl_mat.blend_method = blend_method
+
 def link_mesh(uscene, mesh):
         mesh_name = mesh["name"]
+        bl_mesh = mesh["bl_mesh"]
+        bl_mesh.materials.clear()
+        material_ids = mesh["materials"]
+        scene_mats = uscene["materials"]
+        for mat_id, mat_name in material_ids:
+                material = scene_mats[mat_name]["bl_mat"]
+                bl_mesh.materials.append(material)
+        
 
 def link_actor(uscene, actor, in_parent=None):
         actor_name = actor["name"]
