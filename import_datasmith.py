@@ -2721,8 +2721,8 @@ def load_udsmesh_file(mesh, node, iter):
                 all_uvs = []
                 for uv_idx in range(8):
                         num_uvs = unpack_from_file(4, "<I", f)[0]
-                        uvs = np.frombuffer(f.read(num_uvs * 4 * 2), dtype=np.float32)
-                        uvs = uvs.reshape((-1, 2))
+                        uvs_base = np.frombuffer(f.read(num_uvs * 4 * 2), dtype=np.float32)
+                        uvs = (uvs_base.reshape((-1, 2)) * np.array((1, -1))).reshape((-1,))
                         all_uvs.append(uvs)
 
                 mesh["uvs"] = all_uvs
@@ -2751,11 +2751,15 @@ def load_udsmesh_file(mesh, node, iter):
                 assert file_size == file_calc_size
 
 def handle_texture(uscene, node, iter):
-        texture_name = node.attrib["name"] # see also: label
+        texture_name = node.attrib["name"]
 # <Texture name="Metal_Corrogated_Shiny" texturemode="0" texturefilter="3" textureaddressx="0" textureaddressy="0" rgbcurve="-1.000000" file="APTO V3_Assets/Metal_Corrogated_Shiny.jpg">
+        path = node.attrib["file"]
+        filename_start = path.index("/")
+        filename = path[filename_start+1:]
         texture = {
                 "name": texture_name,
-                "file": node.attrib["file"]
+                "filename": filename,
+                "path": path,
         }
         for action, child in iter:
                 if action == 'end':
@@ -2765,7 +2769,9 @@ def handle_texture(uscene, node, iter):
                 ignore(None, child, iter)
         assert child == node
         assert action == 'end'
-        uscene["textures"][texture_name] = texture
+
+        # seems to be a better idea to index by filename
+        uscene["textures"][filename] = texture
 
 
 def handle_mastermaterial(uscene, node, iter):
@@ -2836,7 +2842,19 @@ def handle_staticmesh(uscene, node, iter):
         bl_mesh.polygons.foreach_set("loop_total", [3] * num_tris)
         bl_mesh.polygons.foreach_set("vertices", indices)
 
+
+        mesh_uvs = mesh["uvs"]
+        for uv_set in mesh_uvs:
+                if len(uv_set) == 0:
+                        continue
+                uv_layer = bl_mesh.uv_layers.new()
+                uv_layer.data.foreach_set("uv", uv_set)
+                
+
+        
+        # not sure when is the best moment to call this
         bl_mesh.update(calc_edges=True)
+        
 
         mesh["bl_mesh"] = bl_mesh
         print(f"mesh: {mesh['name']}")
@@ -2863,13 +2881,14 @@ def handle_root_tag(uscene, node, iter):
         result = handler(uscene, node, iter)
         return result
 
-def handle_scene(iter):
+def handle_scene(iter, path):
 
         uscene = {
                 "actors":    [],
                 "materials": {},
                 "meshes":    {},
                 "textures":  {},
+                "path":      path,
         }
 
         action, root = next(iter)
@@ -2881,6 +2900,11 @@ def handle_scene(iter):
                 handle_root_tag(uscene, child, iter)
         assert child == root
         log.info("finished parsing the xml, doing post process")
+
+        log.info("linking textures")
+        textures = uscene["textures"]
+        for texture in textures.values():
+                link_texture(uscene, texture)
 
         log.info("linking materials")
         materials = uscene["materials"]
@@ -2930,25 +2954,47 @@ def color_from_string(color_string):
         return (r, g, b, a)
         
 
+def link_texture(uscene, texture):
+        texture_path = texture["path"]
+        full_path = f"{uscene['path']}/{texture_path}"
+        print(full_path)
+        image = bpy.data.images.load(full_path)
+        texture["image"] = image
+
 def link_material(uscene, material):
         material_name = material["name"]
         bl_mat = bpy.data.materials.new(material_name)
         material["bl_mat"] = bl_mat
 
-        color = (1, 1, 1, 1)
-        color_prop = material.get("Color")
-        if color_prop:
-                color = color_from_string(color_prop)
+        if material["type"] == "MasterMaterial":
+                color = (1, 1, 1, 1)
+                color_prop = material.get("Color")
+                if color_prop:
+                        color = color_from_string(color_prop)
 
-        blend_method = 'OPAQUE'
-        opacity_prop = material.get("Opacity")
-        if opacity_prop:
-                # set alpha inside color
-                color = color[0:3] + (float(opacity_prop), )
-                blend_method = 'BLEND'
+                blend_method = 'OPAQUE'
+                opacity_prop = material.get("Opacity")
+                if opacity_prop:
+                        color = color[0:3] + (float(opacity_prop), )
+                        blend_method = 'BLEND'
 
-        bl_mat.diffuse_color = color
-        bl_mat.blend_method = blend_method
+                bl_mat.diffuse_color = color
+                bl_mat.blend_method = blend_method
+
+                texture_prop = material.get("Texture")
+                if texture_prop:
+                        texture = uscene["textures"][texture_prop]
+                        image = texture["image"]
+                        bl_mat.use_nodes = True
+                        node_tree = bl_mat.node_tree
+                        nodes = node_tree.nodes
+                        principled = nodes["Principled BSDF"]
+                        image_node = nodes.new('ShaderNodeTexImage')
+                        node_tree.links.new(image_node.outputs['Color'], principled.inputs['Base Color'])
+                        image_node.image = image
+
+                
+        
 
 def link_mesh(uscene, mesh):
         mesh_name = mesh["name"]
@@ -2991,11 +3037,12 @@ def load(context, kwargs, file_path):
         start_time = time.monotonic()
         log.info(f"loading file: {file_path}")
         log.info(f"args: {kwargs}")
-        import_ctx["dir_path"] = path.dirname(file_path)
+        dir_path = path.dirname(file_path)
+        import_ctx["dir_path"] = dir_path
         indent = ""
-        with open(file_path) as f:
+        with open(file_path, encoding='utf-8') as f:
                 iter = ET.iterparse(f, events=('start', 'end'))
-                handle_scene(iter)
+                handle_scene(iter, dir_path)
 
         end_time = time.monotonic()
         total_time = end_time - start_time
