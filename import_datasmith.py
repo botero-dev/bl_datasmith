@@ -1,4 +1,4 @@
-# Copyright Andrés Botero 2019
+# Copyright Andrés Botero 2021
 
 import bpy
 import idprop
@@ -17,6 +17,9 @@ log = logging.getLogger("bl_datasmith")
 
 matrix_datasmith = Matrix.Scale(100, 4)
 matrix_datasmith[1][1] *= -1.0
+
+matrix_datasmith2 = Matrix.Scale(1, 4)
+matrix_datasmith2[1][1] *= -1.0
 
 matrix_normals = [
 	[1, 0, 0],
@@ -2461,6 +2464,9 @@ def handle_color(node, iter):
         return color
 
 def unhandled(_ctx, node, iter):
+        if node.tag == "material":
+                import pdb
+                pdb.set_trace()
         print (f"<{node.tag} UNHANDLED>")
         for action, child in iter:
                 if child == node:
@@ -2476,10 +2482,6 @@ def ignore(_ctx, node, iter):
                         return node
         log.error("never got end event")
 
-def fill_actor_mesh(target, node, iter):
-        check_close(node, iter)
-        attr = node.attrib
-        target["mesh"] = attr["name"]
 
 def handle_actor_children(target, node, iter):
         # strangely, an actor 'visible' flag is in its children node
@@ -2529,13 +2531,12 @@ parse_kvp = {
         "Texture": parse_kvp_texture,
         "Float": parse_kvp_float,
 }
-        
-        
+
 def fill_keyvalueproperty(target, node, iter):
         check_close(node, iter)
         prop_name = node.attrib["name"]
         prop_type = node.attrib["type"]
-        
+
         parser = parse_kvp.get(prop_type)
         if parser == None:
                 log.error(f"unable to find parser for {prop_type}")
@@ -2545,12 +2546,26 @@ def fill_keyvalueproperty(target, node, iter):
 def fill_transform(target, node, iter):
         check_close(node, iter)
 
-        p = lambda x: float(node.attrib[x])
+        attr = node.attrib
+        p = lambda x: float(attr[x])
+        # we manually set the Y coordinate to negative
         loc =   (p("tx"), p("ty"), p("tz"))
         rot =   (p("qw"), p("qx"), p("qy"), p("qz"))
         scale = (p("sx"), p("sy"), p("sz"))
 
         target["transform"] = (loc, rot, scale)
+
+def fill_actor_mesh(target, node, iter):
+        check_close(node, iter)
+        attr = node.attrib
+        target["mesh"] = attr["name"]
+
+def fill_actor_material(target, node, iter):
+        check_close(node, iter)
+        attr = node.attrib
+        slot = attr["id"]
+        material_name = attr["name"]
+        # TODO: fill actor with material
 
 actor_maps = {
         "Actor": {
@@ -2563,6 +2578,7 @@ actor_maps = {
                 "mesh":       fill_actor_mesh,
                 "tag":        ignore,
                 "children":   handle_actor_children,
+                "material":   fill_actor_material,
         },
         "Camera": {
                 "Transform":      fill_transform,
@@ -2668,11 +2684,11 @@ def load_udsmesh_file(mesh, node, iter):
                 # log.debug(f"unknown_b {unknown_b}")
                 assert unknown_b[0] in (159, 160, 161)
                 assert unknown_b[1] == 0
-                
+
                 mesh_start = f.tell()
 
                 # FRawMeshBulkData starts here, which calls FRawMesh operator<<
-                
+
                 # FRawMesh spec starts here, which seems to be an instance of FByteBulkData
                 mesh_version = f.read(4)
                 assert b'\x01\x00\x00\x00' == mesh_version # mesh version
@@ -2745,7 +2761,7 @@ def load_udsmesh_file(mesh, node, iter):
                 unknown_c = f.read(20)
                 # log.debug(f"unknown_c {unknown_c}")
                 # assert b'\x00' * 20 == unknown_c
-                
+
                 file_end = f.tell()
                 file_calc_size = file_end - file_start
                 assert file_size == file_calc_size
@@ -2790,7 +2806,7 @@ def handle_mastermaterial(uscene, node, iter):
         assert child == node
         assert action == 'end'
         uscene["materials"][material_name] = material
-                
+
 def handle_staticmesh(uscene, node, iter):
         mesh_name = node.attrib["name"] # see also: label
         mesh = {
@@ -2824,6 +2840,11 @@ def handle_staticmesh(uscene, node, iter):
         bl_mesh = bpy.data.meshes.new(mesh["name"])
         verts, indices = mesh["vertices"], mesh["indices"]
         verts = verts * 0.01
+
+        # flip in Y axis
+        # verts[1::3] *= -1
+        # TODO: tunable to apply Y-axis mirror in mesh or in object
+
         num_vertices = len(verts) // 3
         bl_mesh.vertices.add(num_vertices)
         num_indices = len(indices)
@@ -2842,25 +2863,21 @@ def handle_staticmesh(uscene, node, iter):
         bl_mesh.polygons.foreach_set("loop_total", [3] * num_tris)
         bl_mesh.polygons.foreach_set("vertices", indices)
 
-
         mesh_uvs = mesh["uvs"]
         for uv_set in mesh_uvs:
                 if len(uv_set) == 0:
                         continue
                 uv_layer = bl_mesh.uv_layers.new()
                 uv_layer.data.foreach_set("uv", uv_set)
-                
 
-        
         # not sure when is the best moment to call this
+        # TODO: use mesh normals
         bl_mesh.update(calc_edges=True)
-        
 
         mesh["bl_mesh"] = bl_mesh
-        print(f"mesh: {mesh['name']}")
+        log.debug(f"mesh: {mesh['name']}")
         uscene["meshes"][mesh_name] = mesh
         return mesh
-
 
 
 def handle_root_tag(uscene, node, iter):
@@ -2957,7 +2974,7 @@ def color_from_string(color_string):
 def link_texture(uscene, texture):
         texture_path = texture["path"]
         full_path = f"{uscene['path']}/{texture_path}"
-        print(full_path)
+        log.debug(full_path)
         image = bpy.data.images.load(full_path)
         texture["image"] = image
 
@@ -2993,8 +3010,7 @@ def link_material(uscene, material):
                         node_tree.links.new(image_node.outputs['Color'], principled.inputs['Base Color'])
                         image_node.image = image
 
-                
-        
+
 
 def link_mesh(uscene, mesh):
         mesh_name = mesh["name"]
@@ -3005,7 +3021,7 @@ def link_mesh(uscene, mesh):
         for mat_id, mat_name in material_ids:
                 material = scene_mats[mat_name]["bl_mat"]
                 bl_mesh.materials.append(material)
-        
+
 
 def link_actor(uscene, actor, in_parent=None):
         actor_name = actor["name"]
@@ -3015,17 +3031,23 @@ def link_actor(uscene, actor, in_parent=None):
                 data = uscene["meshes"][mesh_name]["bl_mesh"]
         bl_obj = bpy.data.objects.new(actor_name, data)
         bl_obj.parent = in_parent
-        
+
         transform = actor["transform"]
         # log.debug(f"postprocessing {actor_name} {transform}")
         mat_loc = Matrix.Translation(np.array(transform[0]) * 0.01)
         mat_rot = Quaternion(transform[1]).to_matrix()
         mat_sca = Matrix.Diagonal(transform[2])
         mat_out = mat_loc.to_4x4() @ mat_rot.to_4x4() @ mat_sca.to_4x4()
+
+        # TODO: be able to mirror Y-axis from the mesh, so we don't end up with
+        # a bunch of -1s in scale and a 180 rotation
+        mat_out = matrix_datasmith2 @ mat_out
+        # mat_out = mat_out @ matrix_datasmith.inverted()
+
         bl_obj.matrix_world = mat_out
         master_collection = bpy.data.collections[0]
         master_collection.objects.link(bl_obj)
-        
+
         children = actor["children"]
         for child in children:
                 link_actor(uscene, child, bl_obj)
@@ -3065,16 +3087,18 @@ def load_wrapper(*, context, filepath, **kwargs):
 		)
 		handler.setFormatter(formatter)
 		log.addHandler(handler)
-		log.setLevel(logging.DEBUG)
-		handler.setLevel(logging.DEBUG)
-		logging.basicConfig(level=logging.DEBUG)
+		logging_level = logging.INFO
+		# logging_level = logging.DEBUG
+		log.setLevel(logging_level)
+		handler.setLevel(logging_level)
+		logging.basicConfig(level=logging_level)
 	try:
 		from os import path
 		basepath, ext = path.splitext(filepath)
 
-		log.info("Starting Datasmith Export")
+		log.info("Starting Datasmith import")
 		load(context, kwargs, filepath)
-		log.info("Finished Datasmith Export")
+		log.info("Finished Datasmith import")
 
 	except Exception as error:
 		log.error("Datasmith export error:")
