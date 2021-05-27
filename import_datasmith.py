@@ -17,11 +17,6 @@ import xml.etree.ElementTree as ET
 
 log = logging.getLogger("bl_datasmith")
 
-matrix_datasmith = Matrix.Scale(100, 4)
-matrix_datasmith[1][1] *= -1.0
-
-matrix_datasmith2 = Matrix.Scale(1, 4)
-matrix_datasmith2[1][1] *= -1.0
 
 matrix_normals = [
 	[1, 0, 0],
@@ -443,7 +438,7 @@ def handle_staticmesh(uscene, node, iter):
         verts = verts * 0.01
 
         # flip in Y axis
-        # verts[1::3] *= -1
+        verts[1::3] *= -1
         # TODO: tunable to apply Y-axis mirror in mesh or in object
 
         num_vertices = len(verts) // 3
@@ -624,6 +619,14 @@ def link_mesh(uscene, mesh):
                 bl_mesh.materials.append(material)
 
 
+
+                
+datasmith_transform_matrix = Matrix.Scale(0.01, 4)
+datasmith_transform_matrix[1][1] *= -1.0
+
+ue_transform_mat = datasmith_transform_matrix
+ue_transform_mat_inv = ue_transform_mat.inverted()
+
 def link_actor(uscene, actor, in_parent=None):
         actor_name = actor["name"]
         data = None
@@ -633,17 +636,18 @@ def link_actor(uscene, actor, in_parent=None):
         bl_obj = bpy.data.objects.new(actor_name, data)
         bl_obj.parent = in_parent
 
-        transform = actor["transform"]
+        loc, rot, scale = actor["transform"]
         # log.debug(f"postprocessing {actor_name} {transform}")
-        mat_loc = Matrix.Translation(np.array(transform[0]) * 0.01)
-        mat_rot = Quaternion(transform[1]).to_matrix()
-        mat_sca = Matrix.Diagonal(transform[2])
+        mat_loc = Matrix.Translation(np.array(loc))
+        mat_rot = Quaternion(rot).to_matrix()
+        mat_sca = Matrix.Diagonal(scale)
         mat_out = mat_loc.to_4x4() @ mat_rot.to_4x4() @ mat_sca.to_4x4()
 
         # TODO: be able to mirror Y-axis from the mesh, so we don't end up with
         # a bunch of -1s in scale and a 180 rotation
-        mat_out = matrix_datasmith2 @ mat_out
+        # mat_out = datasmith_transform_matrix @ mat_out
         # mat_out = mat_out @ matrix_datasmith.inverted()
+        mat_out = ue_transform_mat @ mat_out @ ue_transform_mat_inv
 
         bl_obj.matrix_world = mat_out
         master_collection = bpy.data.collections[0]
