@@ -1786,6 +1786,41 @@ def collect_object_custom_data(bl_obj, n, apply_modifiers, obj_mat, depsgraph, e
 							safe_name = sanitize_name(slot.material.name)
 							n.push(Node('material', {'id':idx, 'name':safe_name}))
 
+		elif bl_obj.type == 'FONT':
+
+			# we could get bl_obj.to_mesh(), but if we do it that way, we
+			# won't get the modifiers applied, maybe we can cache the mesh
+			# to reuse it if there are no modifiers?
+			if apply_modifiers:
+				bl_mesh = bl_obj.evaluated_get(depsgraph).to_mesh()
+			else:
+				bl_mesh = bl_obj.to_mesh()
+
+			if bl_mesh and len(bl_mesh.polygons) > 0:
+				bl_data = bl_obj.data
+				bl_data_name = "%s_%s" % (bl_data.name, bl_obj.name)
+				bl_data_name = sanitize_name(bl_data_name)
+
+				umesh = UDMesh(bl_data_name)
+				meshes = datasmith_context["meshes"]
+				meshes.append(umesh)
+
+				fill_umesh(umesh, bl_mesh)
+				material_list = datasmith_context["materials"]
+
+				n.name = 'ActorMesh'
+				n.push(Node('mesh', {'name': umesh.name}))
+
+				if len(bl_obj.material_slots) == 0:
+					material_list.append((None, bl_obj))
+				else:
+					for idx, slot in enumerate(bl_obj.material_slots):
+						material_list.append((slot.material, bl_obj))
+						if slot.link == 'OBJECT':
+							#collect_materials([slot.material], uscene)
+							safe_name = sanitize_name(slot.material.name)
+							n.push(Node('material', {'id':idx, 'name':safe_name}))
+
 		elif bl_obj.type == 'CAMERA':
 
 			bl_cam = bl_obj.data
