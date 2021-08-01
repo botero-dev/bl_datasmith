@@ -1583,6 +1583,26 @@ def node_transform(mat):
 	n['sz'] = f(scale.z)
 	return n
 
+def transform_to_xml(mat):
+	loc, rot, scale = mat.decompose()
+	parts = [
+		'\t<Transform tx="', f(loc.x),
+		'" ty="', f(loc.y),
+		'" tz="', f(loc.z),
+		'" qw="', f(rot.w),
+		'" qx="', f(rot.x),
+		'" qy="', f(rot.y),
+		'" qz="', f(rot.z),
+		'" sx="', f(scale.x),
+		'" sy="', f(scale.y),
+		'" sz="', f(scale.z),
+		'"/>\n',
+	]
+	return "".join(parts)
+	
+def f(value):
+	return '{:6f}'.format(value)
+
 def collect_object(
 	bl_obj,
 	name_override=None,
@@ -2217,6 +2237,263 @@ def calc_hash(image_path):
 	return hash_md5.hexdigest()
 
 
+
+def fill_obj_mesh(obj_dict, target):
+	obj_dict['type'] = 'ActorMesh'
+	data = target.data
+	fields = obj_dict['fields']
+
+	mesh_field = "".join([
+		'\t<mesh name="',
+		data.name,
+		'"/>\n',
+	])
+		
+	fields.append(mesh_field)
+
+def fill_obj_light(obj_dict, target):
+	obj_dict['type'] = 'Light'
+
+	fields = obj_dict['fields']
+	attribs = obj_dict['attrib']
+	attribs['enabled'] = '1'
+
+	bl_light = target.data
+	light_intensity = bl_light.energy
+	light_attenuation_radius = 100 * math.sqrt(bl_light.energy)
+	light_color = bl_light.color
+	light_intensity_units = 'Lumens' # can also be 'Candelas' or 'Unitless'
+	light_use_custom_distance = bl_light.use_custom_distance
+
+	light_type = 'PointLight'
+	if bl_light.type == 'SUN':
+		light_type = 'DirectionalLight'
+		light_use_custom_distance = False
+		# light_intensity = bl_light.energy # suns are in lux
+
+	elif bl_light.type == 'SPOT':
+		light_type = 'SpotLight'
+		outer_cone_angle = bl_light.spot_size * 180 / (2*math.pi)
+		inner_cone_angle = outer_cone_angle * (1 - bl_light.spot_blend)
+		if inner_cone_angle < 0.0001:
+			inner_cone_angle = 0.0001
+		fields.append('\t<InnerConeAngle value="%f"/>\n' % inner_cone_angle)
+		fields.append('\t<OuterConeAngle value="%f"/>\n' % outer_cone_angle)
+
+		spot_use_candelas = False # TODO: test this thoroughly
+		if spot_use_candelas:
+			light_intensity_units = 'Candelas'
+			light_intensity = bl_light.energy * 0.08 # came up with this constant by brute force
+			# blender watts unit match ue4 lumens unit, but in spot lights the brightness
+			# changes with the spot angle when using lumens while candelas do not.
+
+	elif bl_light.type == 'AREA':
+		light_type = 'AreaLight'
+
+		size_w = size_h = bl_light.size
+		if bl_light.shape == 'RECTANGLE' or bl_light.shape == 'ELLIPSE':
+			size_h = bl_light.size_y
+
+		size_w *= 100
+		size_h *= 100
+		shape_size = (size_w, size_h)
+		fields.append('\t<Shape type="None" width="%f" length="%f" LightType="Rect" />\n' % shape_size)
+		
+	attribs['type'] = light_type
+
+	
+	if light_use_custom_distance:
+		light_attenuation_radius = 100 * bl_light.cutoff_distance
+	# TODO: check how lights work when using a node tree
+	# if bl_light.use_nodes and bl_light.node_tree:
+
+	# 	node = bl_light.node_tree.nodes['Emission']
+	# 	light_color = node.inputs['Color'].default_value
+	# 	light_intensity = node.inputs['Strength'].default_value # have to check how to relate to candelas
+	# 	log.error("unsupported: using nodetree for light " + bl_obj.name)
+	shadow_soft_size = bl_light.shadow_soft_size * 100
+	fields.append('\t<SourceSize value="%f"/>\n' % shadow_soft_size)
+
+	fields.append('\t<Intensity value="%f"/>\n' %         light_intensity)
+	fields.append('\t<AttenuationRadius value="%f"/>\n' % light_attenuation_radius)
+	fields.append('\t<IntensityUnits value="%s"/>\n' %    light_intensity_units)
+	# we could set usetemp=1 and write temperature attribute
+	fields.append('\t<Color usetemp="0" R="%f" G="%f" B="%f"/>\n' % light_color[:])
+	
+
+def fill_obj_unknown(obj_dict, target):
+	obj_dict['type'] = 'UNKNOWN'
+
+obj_fill_funcs = {
+	'MESH': fill_obj_mesh,
+	'LIGHT': fill_obj_light,
+}
+
+
+def collect_object_transform2(bl_obj):
+	mat_basis = bl_obj.matrix_world
+	obj_mat = matrix_datasmith @ mat_basis @ matrix_datasmith.inverted()
+
+	if bl_obj.type in 'CAMERA' or bl_obj.type == 'LIGHT':
+		obj_mat = obj_mat @ matrix_forward
+	elif bl_obj.type == 'LIGHT_PROBE':
+		bl_probe = bl_obj.data
+		if bl_probe.type == 'PLANAR':
+			obj_mat = obj_mat @ Matrix.Scale(0.05, 4)
+		elif bl_probe.type == 'CUBEMAP':
+			if bl_probe.influence_type == 'BOX':
+				size = bl_probe.influence_distance * 100
+				obj_mat = obj_mat @ Matrix.Scale(size, 4)
+
+	result = transform_to_xml(obj_mat)
+	return result
+
+
+def write_object(instance, top_level_objs, instance_groups, _id=""):
+	print("write_object", instance)
+	obj = instance.object
+	if obj:
+		name = obj.name
+
+		fields = []
+		node_data = {
+			'name': obj.name,
+			'fields': fields,
+			'attrib': {},
+		}
+		original = obj.original
+		if original:
+			node_data['layer'] = original.users_collection[0].name_full
+			
+		filler = obj_fill_funcs.get(obj.type, fill_obj_unknown)
+		filler(node_data, obj)
+
+		transform = collect_object_transform2(obj)
+		fields.append(transform)
+		
+		parent = obj.parent
+		if parent:
+			parent_name = parent.name
+			parent_data = instance_groups.get(parent_name)
+			if not parent_data:
+				parent_data = instance_groups[parent_name] = {}
+			
+			children = parent_data.get('children')
+			if not children:
+				children = parent_data['children'] = []
+				
+			children.append(node_data)
+		else: # is top level object
+			top_level_objs.append(node_data)
+		
+
+	
+# for now let's try writing the xml directly
+def collect_depsgraph(output):
+	d = bpy.context.evaluated_depsgraph_get()
+	top_level_objs = []
+	instance_groups = {}
+	originals_data = {}
+	for instance in d.object_instances:
+		parent = instance.object.parent.name if instance.object.parent else ""
+		if instance.is_instance:
+			assert instance.parent != None
+			parent_name = instance.parent.name
+			group = instance_groups.get(parent_name)
+			if not group:
+				group = instance_groups[parent_name] = {}
+
+			instance_lists = group.get('instances')
+			if not instance_lists:
+				instance_lists = group['instances'] = {}
+			original = instance.instance_object.original
+
+			converts_to_mesh = original.type in ('MESH', 'CURVE')
+			if converts_to_mesh:
+				original_data = originals_data.get(original)
+				if not original_data:
+					bl_data = original.data
+					original_data = originals_data[original] = {}
+					original_data['mesh'] = '(mesh  data)'
+					original_data['name'] = bl_data.name
+
+			# this could add to instance collection or create actor depending on settings
+			instance_list = instance_lists.get(original)
+			if not instance_list:
+				instance_list = instance_lists[original] = []
+
+			instance_list.append(instance)
+		else:
+			obj = instance.object
+			write_object(instance, top_level_objs, instance_groups)
+
+	output = []
+	for parent_obj in top_level_objs:
+		render_tree(parent_obj, output, instance_groups, indent='\t')
+		
+	result = "".join(output)
+	return result
+
+
+def render_tree(obj_dict, output, instance_groups, indent):
+	output.append(indent)
+	output.append('<')
+	obj_type = obj_dict['type']
+	output.append(obj_type)
+	output.append(' name="')
+	obj_name = obj_dict['name']
+	output.append(obj_name)
+
+	layer = obj_dict.get('layer')
+	if layer:
+		output.append('" layer="')
+		obj_layer = obj_dict['layer']
+		output.append(obj_layer)
+	
+	output.append('">\n')
+
+	fields = obj_dict['fields']
+	for field in fields:
+		output.append(indent)
+		output.append(field)
+
+	group = instance_groups.get(obj_name)
+	if group:
+		
+		output.append(indent)
+		output.append('\t<children>\n')
+
+		children = group.get('children')
+		if children:
+			for child in children:
+				next_indent = '%s\t\t' % indent
+				render_tree(child, output, instance_groups, next_indent)
+			
+		parent_instances = group.get('instances')
+		if parent_instances:
+			for original, instances in parent_instances.items():
+				output.append(indent)
+				output.append('\t\t<InstancedStaticMeshActor name="')
+				output.append(str(original.name))
+				output.append('">\n')
+				for instance in instances:
+					output.append(indent)
+					output.append('\t\t\t')
+					output.append(str(instance))
+					output.append('\n')
+				output.append(indent)
+				output.append('\t\t</InstancedStaticMeshActor>\n')
+
+		output.append(indent)
+		output.append('\t</children>\n')
+
+	output.append(indent)
+	output.append("</")
+	output.append(obj_type)
+	output.append(">\n")
+	
+	
+
 datasmith_context = None
 def collect_and_save(context, args, save_path):
 
@@ -2236,37 +2513,44 @@ def collect_and_save(context, args, save_path):
 	}
 
 	log.info("collecting objects")
-	datasmith_context['depsgraph'] = context.evaluated_depsgraph_get()
 	all_objects = context.scene.objects
-	root_objects = [obj for obj in all_objects if obj.parent is None]
 
-	objects = []
 
 	selected_only = args["export_selected"]
 	apply_modifiers = args["apply_modifiers"]
 	minimal_export = args["minimal_export"]
-	export_animations = args["export_animations"]
-
-	if export_animations:
-		frame_at_export_time = context.scene.frame_current
-		frame_start = context.scene.frame_start
-		frame_end = context.scene.frame_end
-
 	write_metadata = args["write_metadata"]
+	export_animations = args["export_animations"]
+	USE_OLD_OBJECT_ITERATOR = args["use_old_iterator"]
 
-	for obj in root_objects:
-		uobj = collect_object(obj,
-			selected_only=selected_only,
-			apply_modifiers=apply_modifiers,
-			export_animations=export_animations,
-			export_metadata=write_metadata,
-		)
-		if uobj:
-			objects.append(uobj)
+	objects = []
+	obj_output = ""
+	if USE_OLD_OBJECT_ITERATOR:
+		datasmith_context['depsgraph'] = context.evaluated_depsgraph_get()
+		root_objects = [obj for obj in all_objects if obj.parent is None]
+		for obj in root_objects:
+			uobj = collect_object(
+				bl_obj=obj,
+				selected_only=selected_only,
+				apply_modifiers=apply_modifiers,
+				export_animations=export_animations,
+				export_metadata=write_metadata,
+			)
+			if uobj:
+				objects.append(uobj)
+	else: # if not USE_OLD_OBJECT_ITERATOR:
+		# with the depsgraph iterator, we don't start with root objects and then find children.
+		# with the new object iterator, we read the depsgraph evaluated object array
+		print("USE NEW OBJECT ITERATOR")
+		obj_output = collect_depsgraph(objects)
 
 	log.info("collecting animations")
 	anims = []
 	if export_animations:
+
+		frame_at_export_time = context.scene.frame_current
+		frame_start = context.scene.frame_start
+		frame_end = context.scene.frame_end
 
 		# TODO: found a bit late about this: we need to test and profile
 		# https://docs.blender.org/api/current/bpy_extras.anim_utils.html
@@ -2432,6 +2716,9 @@ def collect_and_save(context, args, save_path):
 
 	for obj in objects:
 		n.push(obj)
+
+	if obj_output:
+		n.push(obj_output)
 
 	if environment:
 		for env in environment:

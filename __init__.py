@@ -92,6 +92,11 @@ class ExportDatasmith(bpy.types.Operator, ExportHelper):
 			description="For development only, writes a python profile 'datasmith.prof'",
 			default=False,
 		)
+	use_old_iterator: BoolProperty(
+			name="Use old iterator",
+			description="In case you want to use the old exporter that was slower",
+			default=False,
+		)
 
 	def execute(self, context):
 		keywords = self.as_keywords(ignore=("filter_glob",))
