@@ -2239,60 +2239,53 @@ def calc_hash(image_path):
 
 
 meshes_per_original = {}
-meshes_per_name = {}
 
 # send instance.original to this function
-def get_mesh_data(bl_obj_inst):
+def get_mesh_name(bl_obj_inst):
 	bl_obj = bl_obj_inst.original
-	mesh_data = meshes_per_original.get(bl_obj)
-	if mesh_data:
-		print("returning mesh", mesh_data['name']) 
-		return mesh_data
-
 	
-	mesh_data = {}
-	meshes_per_original[bl_obj] = mesh_data
-		
-	bl_mesh = bl_obj_inst.to_mesh()
-	mesh_data['mesh'] = bl_mesh
-
-	data = bl_obj.data
-	bl_mesh_name = data.name
+	bl_mesh_name = bl_obj.data.name
 	print("creating mesh", bl_mesh_name)
 	if bl_obj.modifiers:
 		bl_mesh_name = "%s__%s" % (bl_mesh_name, bl_obj.name)
 	bl_mesh_name = sanitize_name(bl_mesh_name)
+	
+	mesh_data = meshes_per_original.get(bl_mesh_name)
+	if bl_mesh_name in meshes_per_original:
+		return bl_mesh_name
 
+	
+	mesh_data = meshes_per_original[bl_mesh_name] = {}
 	mesh_data['name'] = bl_mesh_name
-	meshes_per_name[bl_mesh_name] = mesh_data
+
+		
+	bl_mesh = bl_obj_inst.to_mesh()
+	mesh_data['mesh'] = bl_mesh
 
 	meshes = datasmith_context["meshes"]
 	umesh = None
-	if True:
-		if len(bl_mesh.polygons) > 0:
-			umesh = UDMesh(bl_mesh_name)
-			meshes.append(umesh)
-			fill_umesh(umesh, bl_mesh)
+	if len(bl_mesh.polygons) > 0:
+		umesh = UDMesh(bl_mesh_name)
+		meshes.append(umesh)
+		fill_umesh(umesh, bl_mesh)
 
-			material_list = datasmith_context["materials"]
-			if len(bl_obj.material_slots) == 0:
-				material_list.append((None, bl_obj))
-			else:
-				for slot in bl_obj.material_slots:
-					material_list.append((slot.material, bl_obj))
-			meshes.append(umesh)
+		material_list = datasmith_context["materials"]
+		if len(bl_obj.material_slots) == 0:
+			material_list.append((None, bl_obj))
+		else:
+			for slot in bl_obj.material_slots:
+				material_list.append((slot.material, bl_obj))
 
 	if umesh:
 		mesh_data['umesh'] = umesh
-	return mesh_data
+	return bl_mesh_name
 		
 def fill_obj_mesh(obj_dict, bl_obj):
-	mesh_data = get_mesh_data(bl_obj)
-	if mesh_data:
+	mesh_name = get_mesh_name(bl_obj)
+	if mesh_name:
 		obj_dict['type'] = 'ActorMesh'
 		fields = obj_dict['fields']
 
-		mesh_name = mesh_data['name']
 		fields.append('\t<mesh name="%s"/>\n' % mesh_name)
 
 		for idx, slot in enumerate(bl_obj.material_slots):
@@ -2373,9 +2366,41 @@ def fill_obj_light(obj_dict, target):
 	
 
 def fill_obj_unknown(obj_dict, target):
-	obj_dict['type'] = 'UNKNOWN'
+	obj_dict['type'] = "ACTOR_BL%s" % target.type
+
+def fill_obj_empty(obj_dict, target):
+	pass
+
+def fill_obj_camera(obj_dict, target):
+	obj_dict['type'] = "Camera"
+	
+	# TODO
+	# look_at_actor = sanitize_name(bl_cam.dof.focus_object.name)
+
+	fields = obj_dict["fields"]
+	bl_cam = target.data
+
+	use_dof = "1" if bl_cam.dof.use_dof else "0"
+	fields.append('\t<DepthOfField enabled="%s"/>\n' % use_dof)
+
+	focus_distance_cm = bl_cam.dof.focus_distance * 100
+	fields.append('\t<FocusDistance value="%f" />\n' % focus_distance_cm) # to centimeters
+	fields.append('\t<FStop value="%f" />\n' % bl_cam.dof.aperture_fstop)
+	fields.append('\t<FocalLength value="%f" />\n' % bl_cam.lens)
+	
+	# blender doesn't have per-camera aspect ratio
+	sensor_aspect_ratio = 1.777778
+	fields.append('\t<SensorAspectRatio value="%f" />\n' % sensor_aspect_ratio)
+	fields.append('\t<SensorWidth value="%f"/>\n' % bl_cam.sensor_width)
+	
+	# possible micro optim: compare with:
+	# 	fields.append('\t<%s value="%f" />\n' % ("FocalLength", bl_cam.lens))
+
+
 
 obj_fill_funcs = {
+	'CAMERA': fill_obj_camera,
+	'EMPTY': fill_obj_empty,
 	'MESH':  fill_obj_mesh,
 	'CURVE': fill_obj_mesh,
 	'LIGHT': fill_obj_light,
@@ -2413,7 +2438,6 @@ def get_object_data(objects, _object, top_level_objs, object_name=None):
 		object_name = _object.name
 
 	object_data = None
-	print("getting object: %s", object_name, 'unique', unique)
 	if not unique:
 		object_data = objects.get(object_name)
 	if not object_data:
@@ -2458,27 +2482,42 @@ def collect_depsgraph(output, use_instanced_meshes):
 	d = bpy.context.evaluated_depsgraph_get()
 	top_level_objs = []
 	instance_groups = {}
+
+	last_parent = None
+	last_parent_data = None
 	for instance in d.object_instances:
-		print(instance.object.name)
 		
 		transform = collect_object_transform2(instance.object, instance.matrix_world)
 		was_instanced = False
 		if use_instanced_meshes and instance.is_instance:
-			assert instance.parent != None
-			parent_data = get_object_data(instance_groups, instance.parent, top_level_objs)
 
-			instance_lists = parent_data['instances']
 			original = instance.instance_object.original
 
-			# this could add to instance collection or create actor depending on settings
 			convertible_to_mesh = ('MESH', 'CURVE')
 			if original.type in convertible_to_mesh:
+				'''
+				if instance.parent == last_parent:
+					parent_data = last_parent_data
+				else:
+					parent_data = get_object_data(instance_groups, instance.parent, top_level_objs)
+					last_parent_data = parent_data
+					last_parent = instance.parent
+'''
+				parent_data = get_object_data(instance_groups, instance.parent, top_level_objs)
+				mesh_name = get_mesh_name(instance.instance_object) # ensure that mesh data has been collected
 				was_instanced = True
-				instance_list = instance_lists.get(original)
+				original_name = original.name
+				instance_lists = parent_data['instances']
+				instance_list = instance_lists.get(mesh_name)
 				if not instance_list:
-					instance_list = instance_lists[original] = []
+					instance_list = instance_lists[mesh_name] = []
 
-				instance_data = "\t\t\t%s" % transform
+				parent_matrix = instance.parent.matrix_world
+				instance_matrix = instance.matrix_world @ parent_matrix.inverted()
+				instance_matrix = parent_matrix.inverted() @ instance.matrix_world
+				instance_transform = collect_object_transform2(instance.object, instance_matrix)
+				
+				instance_data = "\t\t\t%s" % instance_transform
 				instance_list.append(instance_data)
 
 		if not was_instanced:
@@ -2578,13 +2617,15 @@ def render_tree(obj_dict, output, indent):
 			output.append('\t\t<ActorHierarchicalInstancedStaticMesh name="')
 			output.append(obj_name)
 			output.append('_')
-			output.append(str(original.name))
+			output.append(original)
 			output.append('">\n')
 			output.append(indent)
 			output.append('\t\t\t<mesh name="')
-			original_mesh = meshes_per_original[original]
-			output.append(original_mesh['name'])
+			output.append(original)
 			output.append('"/>\n')
+			output.append(indent)
+			output.append('\t\t\t')
+			output.append(obj_dict['transform'])
 			output.append(indent)
 			output.append('\t\t\t<Instances count="')
 			output.append(str(len(instances)))
