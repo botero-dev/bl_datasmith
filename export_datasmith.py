@@ -18,6 +18,7 @@ log = logging.getLogger("bl_datasmith")
 matrix_datasmith = Matrix.Scale(100, 4)
 matrix_datasmith[1][1] *= -1.0
 
+# optimize: maybe set this as a numpy array directly?
 matrix_normals = [
 	[1, 0, 0],
 	[0, -1, 0],
@@ -2237,26 +2238,75 @@ def calc_hash(image_path):
 	return hash_md5.hexdigest()
 
 
+meshes_per_original = {}
+meshes_per_name = {}
 
-def fill_obj_mesh(obj_dict, target):
-	obj_dict['type'] = 'ActorMesh'
-	data = target.data
-	fields = obj_dict['fields']
+# send instance.original to this function
+def get_mesh_data(bl_obj_inst):
+	bl_obj = bl_obj_inst.original
+	mesh_data = meshes_per_original.get(bl_obj)
+	if mesh_data:
+		print("returning mesh", mesh_data['name']) 
+		return mesh_data
 
-	mesh_field = "".join([
-		'\t<mesh name="',
-		data.name,
-		'"/>\n',
-	])
+	
+	mesh_data = {}
+	meshes_per_original[bl_obj] = mesh_data
 		
-	fields.append(mesh_field)
+	bl_mesh = bl_obj_inst.to_mesh()
+	mesh_data['mesh'] = bl_mesh
+
+	data = bl_obj.data
+	bl_mesh_name = data.name
+	print("creating mesh", bl_mesh_name)
+	if bl_obj.modifiers:
+		bl_mesh_name = "%s__%s" % (bl_mesh_name, bl_obj.name)
+	bl_mesh_name = sanitize_name(bl_mesh_name)
+
+	mesh_data['name'] = bl_mesh_name
+	meshes_per_name[bl_mesh_name] = mesh_data
+
+	meshes = datasmith_context["meshes"]
+	umesh = None
+	if True:
+		if len(bl_mesh.polygons) > 0:
+			umesh = UDMesh(bl_mesh_name)
+			meshes.append(umesh)
+			fill_umesh(umesh, bl_mesh)
+
+			material_list = datasmith_context["materials"]
+			if len(bl_obj.material_slots) == 0:
+				material_list.append((None, bl_obj))
+			else:
+				for slot in bl_obj.material_slots:
+					material_list.append((slot.material, bl_obj))
+			meshes.append(umesh)
+
+	if umesh:
+		mesh_data['umesh'] = umesh
+	return mesh_data
+		
+def fill_obj_mesh(obj_dict, bl_obj):
+	mesh_data = get_mesh_data(bl_obj)
+	if mesh_data:
+		obj_dict['type'] = 'ActorMesh'
+		fields = obj_dict['fields']
+
+		mesh_name = mesh_data['name']
+		fields.append('\t<mesh name="%s"/>\n' % mesh_name)
+
+		for idx, slot in enumerate(bl_obj.material_slots):
+			if slot.link == 'OBJECT':
+				#collect_materials([slot.material], uscene)
+				safe_name = sanitize_name(slot.material.name)
+				fields.append('\t<material id="%i" name="%s"/>' % (idx, safe_name))
+
 
 def fill_obj_light(obj_dict, target):
 	obj_dict['type'] = 'Light'
 
 	fields = obj_dict['fields']
 	attribs = obj_dict['attrib']
-	attribs['enabled'] = '1'
 
 	bl_light = target.data
 	light_intensity = bl_light.energy
@@ -2299,7 +2349,8 @@ def fill_obj_light(obj_dict, target):
 		shape_size = (size_w, size_h)
 		fields.append('\t<Shape type="None" width="%f" length="%f" LightType="Rect" />\n' % shape_size)
 		
-	attribs['type'] = light_type
+	attribs.append(' type="%s"' % light_type)
+	attribs.append(' enabled="1"')
 
 	
 	if light_use_custom_distance:
@@ -2325,13 +2376,16 @@ def fill_obj_unknown(obj_dict, target):
 	obj_dict['type'] = 'UNKNOWN'
 
 obj_fill_funcs = {
-	'MESH': fill_obj_mesh,
+	'MESH':  fill_obj_mesh,
+	'CURVE': fill_obj_mesh,
 	'LIGHT': fill_obj_light,
 }
 
 
-def collect_object_transform2(bl_obj):
+def collect_object_transform2(bl_obj, instance_mat = None):
 	mat_basis = bl_obj.matrix_world
+	if instance_mat:
+		mat_basis = instance_mat
 	obj_mat = matrix_datasmith @ mat_basis @ matrix_datasmith.inverted()
 
 	if bl_obj.type in 'CAMERA' or bl_obj.type == 'LIGHT':
@@ -2349,96 +2403,133 @@ def collect_object_transform2(bl_obj):
 	return result
 
 
-def write_object(instance, top_level_objs, instance_groups, _id=""):
-	print("write_object", instance)
-	obj = instance.object
-	if obj:
-		name = obj.name
-
-		fields = []
-		node_data = {
-			'name': obj.name,
-			'fields': fields,
-			'attrib': {},
-		}
-		original = obj.original
-		if original:
-			node_data['layer'] = original.users_collection[0].name_full
-			
-		filler = obj_fill_funcs.get(obj.type, fill_obj_unknown)
-		filler(node_data, obj)
-
-		transform = collect_object_transform2(obj)
-		fields.append(transform)
-		
-		parent = obj.parent
-		if parent:
-			parent_name = parent.name
-			parent_data = instance_groups.get(parent_name)
-			if not parent_data:
-				parent_data = instance_groups[parent_name] = {}
-			
-			children = parent_data.get('children')
-			if not children:
-				children = parent_data['children'] = []
-				
-			children.append(node_data)
-		else: # is top level object
-			top_level_objs.append(node_data)
-		
-
+def get_object_data(objects, _object, top_level_objs, object_name=None):
 	
+	assert _object
+	unique = False
+	if object_name:
+		unique = True
+	if not object_name:
+		object_name = _object.name
+
+	object_data = None
+	print("getting object: %s", object_name, 'unique', unique)
+	if not unique:
+		object_data = objects.get(object_name)
+	if not object_data:
+		object_data = create_object(_object)
+		object_data['name'] = object_name
+		if not unique:
+			objects[object_name] = object_data
+		parent = _object.parent
+		if parent:
+			parent_data = get_object_data(objects, parent, top_level_objs)
+			
+			parent_data['children'].append(object_data)
+		else: # is top level object
+			print("TOP LEVEL OBJ:%s"%object_data['name'])
+			top_level_objs.append(object_data)
+	return object_data
+	
+
+
+def create_object(obj):
+	assert obj
+
+	object_data = {
+		'fields': [],
+		'attrib': [],
+		'visible': not obj.hide_render,
+		'children': [],
+		'instances': {},
+	}
+	original = obj.original
+	if original:
+		object_data['layer'] = original.users_collection[0].name_full
+		
+
+	object_data['transform'] = collect_object_transform2(obj)
+	return object_data
+		
+
+			
 # for now let's try writing the xml directly
-def collect_depsgraph(output):
+def collect_depsgraph(output, use_instanced_meshes):
 	d = bpy.context.evaluated_depsgraph_get()
 	top_level_objs = []
 	instance_groups = {}
-	originals_data = {}
 	for instance in d.object_instances:
-		parent = instance.object.parent.name if instance.object.parent else ""
-		if instance.is_instance:
+		print(instance.object.name)
+		
+		transform = collect_object_transform2(instance.object, instance.matrix_world)
+		was_instanced = False
+		if use_instanced_meshes and instance.is_instance:
 			assert instance.parent != None
-			parent_name = instance.parent.name
-			group = instance_groups.get(parent_name)
-			if not group:
-				group = instance_groups[parent_name] = {}
+			parent_data = get_object_data(instance_groups, instance.parent, top_level_objs)
 
-			instance_lists = group.get('instances')
-			if not instance_lists:
-				instance_lists = group['instances'] = {}
+			instance_lists = parent_data['instances']
 			original = instance.instance_object.original
 
-			converts_to_mesh = original.type in ('MESH', 'CURVE')
-			if converts_to_mesh:
-				original_data = originals_data.get(original)
-				if not original_data:
-					bl_data = original.data
-					original_data = originals_data[original] = {}
-					original_data['mesh'] = '(mesh  data)'
-					original_data['name'] = bl_data.name
-
 			# this could add to instance collection or create actor depending on settings
-			instance_list = instance_lists.get(original)
-			if not instance_list:
-				instance_list = instance_lists[original] = []
+			convertible_to_mesh = ('MESH', 'CURVE')
+			if original.type in convertible_to_mesh:
+				was_instanced = True
+				instance_list = instance_lists.get(original)
+				if not instance_list:
+					instance_list = instance_lists[original] = []
 
-			instance_list.append(instance)
-		else:
+				instance_data = "\t\t\t%s" % transform
+				instance_list.append(instance_data)
+
+		if not was_instanced:
 			obj = instance.object
-			write_object(instance, top_level_objs, instance_groups)
+			assert obj
+			name = None
+			
+			if instance.is_instance:
+				id_list = []
+				for id in instance.persistent_id:
+					if id != 0x7fffffff:
+						id_list.append("_%i" % id)
+					else:
+						id_list.append('x')
+
+				
+				instance_id = "".join(
+					"_%i" % id
+					for id in instance.persistent_id
+					if id != 0x7fffffff
+				)
+				instance_id = "".join(id_list)
+				inst = instance.instance_object
+				parent_chain = []
+				parent = inst.parent
+				while parent:
+					parent_chain.append(parent.name)
+					parent = parent.parent
+				parents_name = "_".join(parent_chain)
+				name = '%s_%s_%s' % (parents_name, inst.name, instance_id)
+			object_data = get_object_data(instance_groups, obj, top_level_objs, object_name=name)
+
+			if instance.is_instance:
+				object_data['transform'] = transform
+
+			filler = obj_fill_funcs.get(obj.type, fill_obj_unknown)
+			filler(object_data, obj)
+
 
 	output = []
 	for parent_obj in top_level_objs:
-		render_tree(parent_obj, output, instance_groups, indent='\t')
+		render_tree(parent_obj, output, indent='\t')
 		
 	result = "".join(output)
 	return result
 
 
-def render_tree(obj_dict, output, instance_groups, indent):
+def render_tree(obj_dict, output, indent):
 	output.append(indent)
 	output.append('<')
-	obj_type = obj_dict['type']
+	obj_type = obj_dict.get('type', "Actor")
 	output.append(obj_type)
 	output.append(' name="')
 	obj_name = obj_dict['name']
@@ -2449,40 +2540,63 @@ def render_tree(obj_dict, output, instance_groups, indent):
 		output.append('" layer="')
 		obj_layer = obj_dict['layer']
 		output.append(obj_layer)
-	
-	output.append('">\n')
 
+	output.append('"')
+	
+	attribs = obj_dict['attrib']
+	if attribs:
+		for attr in attribs:
+			output.append(attr)
+	
+	output.append('>\n')
+	
 	fields = obj_dict['fields']
 	for field in fields:
 		output.append(indent)
 		output.append(field)
 
-	group = instance_groups.get(obj_name)
-	if group:
+	output.append(indent)
+	output.append(obj_dict['transform'])
+
+	children = obj_dict['children']
+	parent_instances = obj_dict['instances']
+
+	if children or parent_instances:
 		
 		output.append(indent)
-		output.append('\t<children>\n')
+		output.append('\t<children visible="')
+		output.append(str(obj_dict['visible']))
+		output.append('">\n')
 
-		children = group.get('children')
-		if children:
-			for child in children:
-				next_indent = '%s\t\t' % indent
-				render_tree(child, output, instance_groups, next_indent)
+
+		for child in children:
+			next_indent = '%s\t\t' % indent
+			render_tree(child, output, next_indent)
 			
-		parent_instances = group.get('instances')
-		if parent_instances:
-			for original, instances in parent_instances.items():
+		for original, instances in parent_instances.items():
+			output.append(indent)
+			output.append('\t\t<ActorHierarchicalInstancedStaticMesh name="')
+			output.append(obj_name)
+			output.append('_')
+			output.append(str(original.name))
+			output.append('">\n')
+			output.append(indent)
+			output.append('\t\t\t<mesh name="')
+			original_mesh = meshes_per_original[original]
+			output.append(original_mesh['name'])
+			output.append('"/>\n')
+			output.append(indent)
+			output.append('\t\t\t<Instances count="')
+			output.append(str(len(instances)))
+			output.append('">\n')
+			for instance in instances:
 				output.append(indent)
-				output.append('\t\t<InstancedStaticMeshActor name="')
-				output.append(str(original.name))
-				output.append('">\n')
-				for instance in instances:
-					output.append(indent)
-					output.append('\t\t\t')
-					output.append(str(instance))
-					output.append('\n')
-				output.append(indent)
-				output.append('\t\t</InstancedStaticMeshActor>\n')
+				output.append(str(instance))
+
+			output.append(indent)
+			output.append('\t\t\t</Instances>\n')
+			output.append(indent)
+			output.append('\t\t</ActorHierarchicalInstancedStaticMesh>\n')
 
 		output.append(indent)
 		output.append('\t</children>\n')
@@ -2522,6 +2636,7 @@ def collect_and_save(context, args, save_path):
 	write_metadata = args["write_metadata"]
 	export_animations = args["export_animations"]
 	USE_OLD_OBJECT_ITERATOR = args["use_old_iterator"]
+	use_instanced_meshes = args["use_instanced_meshes"]
 
 	objects = []
 	obj_output = ""
@@ -2542,7 +2657,7 @@ def collect_and_save(context, args, save_path):
 		# with the depsgraph iterator, we don't start with root objects and then find children.
 		# with the new object iterator, we read the depsgraph evaluated object array
 		print("USE NEW OBJECT ITERATOR")
-		obj_output = collect_depsgraph(objects)
+		obj_output = collect_depsgraph(objects, use_instanced_meshes)
 
 	log.info("collecting animations")
 	anims = []

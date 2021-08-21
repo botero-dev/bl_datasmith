@@ -78,7 +78,7 @@ class ExportDatasmith(bpy.types.Operator, ExportHelper):
 		)
 	write_metadata: BoolProperty(
 			name="Write metadata",
-			description="Writes custom properties of objects and meshes as metadata."
+			description="Writes custom properties of objects and meshes as metadata. "
 				"It may be useful to disable this when using certain addons",
 			default=True,
 		)
@@ -92,9 +92,15 @@ class ExportDatasmith(bpy.types.Operator, ExportHelper):
 			description="For development only, writes a python profile 'datasmith.prof'",
 			default=False,
 		)
+	use_instanced_meshes: BoolProperty(
+			name="Use instanced meshes",
+			description="Exports instancing objects and particles as UE instanced meshes. Useful for foliage",
+			default=False,
+		)
 	use_old_iterator: BoolProperty(
-			name="Use old iterator",
-			description="In case you want to use the old exporter that was slower",
+		name="Use old iterator",
+		description="In case you want to use the old exporter that was slower. "
+			"This is incompatible with instanced meshes",
 			default=False,
 		)
 
