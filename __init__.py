@@ -95,7 +95,7 @@ class ExportDatasmith(bpy.types.Operator, ExportHelper):
 	use_instanced_meshes: BoolProperty(
 			name="Use instanced meshes",
 			description="Exports instancing objects and particles as UE instanced meshes. Useful for foliage",
-			default=False,
+			default=True,
 		)
 	use_old_iterator: BoolProperty(
 		name="Use old iterator",

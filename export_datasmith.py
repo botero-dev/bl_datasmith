@@ -2243,11 +2243,37 @@ meshes_per_original = {}
 # send instance.original to this function
 def get_mesh_name(bl_obj_inst):
 	bl_obj = bl_obj_inst.original
-	
+
 	bl_mesh_name = bl_obj.data.name
 	print("creating mesh", bl_mesh_name)
 	if bl_obj.modifiers:
-		bl_mesh_name = "%s__%s" % (bl_mesh_name, bl_obj.name)
+		bl_mesh_name = "%s_%s" % (bl_obj.name, bl_mesh_name)
+
+	library = bl_obj.data.library
+	if library:
+		libraries_dict = datasmith_context["libraries"]
+		prefix = libraries_dict.get(library)
+
+		if prefix is None:
+			lib_filename = bpy.path.basename(library.filepath)
+			lib_clean_name = bpy.path.clean_name(lib_filename)
+			base_prefix = lib_clean_name.strip("_")
+			if base_prefix.endswith("_blend"):
+				base_prefix = base_prefix[:-5] # leave the underscore
+
+			prefix = base_prefix
+			try_count = 0
+			
+			# just to reaaally make sure there are no collisions
+			libraries_prefixes = libraries_dict.values()
+			while prefix in libraries_prefixes:
+				try_count += 1
+				prefix = "%s%d_" % (prefix_base, try_count)
+
+			libraries_dict[library] = prefix
+	
+		bl_mesh_name = prefix + bl_mesh_name
+
 	bl_mesh_name = sanitize_name(bl_mesh_name)
 	
 	mesh_data = meshes_per_original.get(bl_mesh_name)
@@ -2264,7 +2290,7 @@ def get_mesh_name(bl_obj_inst):
 
 	meshes = datasmith_context["meshes"]
 	umesh = None
-	if len(bl_mesh.polygons) > 0:
+	if bl_mesh and len(bl_mesh.polygons) > 0:
 		umesh = UDMesh(bl_mesh_name)
 		meshes.append(umesh)
 		fill_umesh(umesh, bl_mesh)
@@ -2292,7 +2318,7 @@ def fill_obj_mesh(obj_dict, bl_obj):
 			if slot.link == 'OBJECT':
 				#collect_materials([slot.material], uscene)
 				safe_name = sanitize_name(slot.material.name)
-				fields.append('\t<material id="%i" name="%s"/>' % (idx, safe_name))
+				fields.append('\t<material id="%i" name="%s"/>\n' % (idx, safe_name))
 
 
 def fill_obj_light(obj_dict, target):
@@ -2366,9 +2392,6 @@ def fill_obj_light(obj_dict, target):
 	
 
 def fill_obj_unknown(obj_dict, target):
-	obj_dict['type'] = "ACTOR_BL%s" % target.type
-
-def fill_obj_empty(obj_dict, target):
 	pass
 
 def fill_obj_camera(obj_dict, target):
@@ -2382,16 +2405,16 @@ def fill_obj_camera(obj_dict, target):
 
 	use_dof = "1" if bl_cam.dof.use_dof else "0"
 	fields.append('\t<DepthOfField enabled="%s"/>\n' % use_dof)
+	fields.append('\t<SensorWidth value="%f"/>\n' % bl_cam.sensor_width)
 
-	focus_distance_cm = bl_cam.dof.focus_distance * 100
-	fields.append('\t<FocusDistance value="%f" />\n' % focus_distance_cm) # to centimeters
-	fields.append('\t<FStop value="%f" />\n' % bl_cam.dof.aperture_fstop)
-	fields.append('\t<FocalLength value="%f" />\n' % bl_cam.lens)
-	
 	# blender doesn't have per-camera aspect ratio
 	sensor_aspect_ratio = 1.777778
-	fields.append('\t<SensorAspectRatio value="%f" />\n' % sensor_aspect_ratio)
-	fields.append('\t<SensorWidth value="%f"/>\n' % bl_cam.sensor_width)
+	fields.append('\t<SensorAspectRatio value="%f"/>\n' % sensor_aspect_ratio)
+
+	focus_distance_cm = bl_cam.dof.focus_distance * 100
+	fields.append('\t<FocusDistance value="%f"/>\n' % focus_distance_cm) # to centimeters
+	fields.append('\t<FStop value="%f"/>\n' % bl_cam.dof.aperture_fstop)
+	fields.append('\t<FocalLength value="%f"/>\n' % bl_cam.lens)
 	
 	# possible micro optim: compare with:
 	# 	fields.append('\t<%s value="%f" />\n' % ("FocalLength", bl_cam.lens))
@@ -2400,7 +2423,6 @@ def fill_obj_camera(obj_dict, target):
 
 obj_fill_funcs = {
 	'CAMERA': fill_obj_camera,
-	'EMPTY': fill_obj_empty,
 	'MESH':  fill_obj_mesh,
 	'CURVE': fill_obj_mesh,
 	'LIGHT': fill_obj_light,
@@ -2437,6 +2459,7 @@ def get_object_data(objects, _object, top_level_objs, object_name=None):
 	if not object_name:
 		object_name = _object.name
 
+	object_name = sanitize_name(object_name)
 	object_data = None
 	if not unique:
 		object_data = objects.get(object_name)
@@ -2516,9 +2539,9 @@ def collect_depsgraph(output, use_instanced_meshes):
 				instance_matrix = instance.matrix_world @ parent_matrix.inverted()
 				instance_matrix = parent_matrix.inverted() @ instance.matrix_world
 				instance_transform = collect_object_transform2(instance.object, instance_matrix)
+				instance_world_transform = collect_object_transform2(instance.object, instance.matrix_world)
 				
-				instance_data = "\t\t\t%s" % instance_transform
-				instance_list.append(instance_data)
+				instance_list.append((instance_transform, instance_world_transform))
 
 		if not was_instanced:
 			obj = instance.object
@@ -2548,6 +2571,7 @@ def collect_depsgraph(output, use_instanced_meshes):
 					parent = parent.parent
 				parents_name = "_".join(parent_chain)
 				name = '%s_%s_%s' % (parents_name, inst.name, instance_id)
+
 			object_data = get_object_data(instance_groups, obj, top_level_objs, object_name=name)
 
 			if instance.is_instance:
@@ -2613,31 +2637,52 @@ def render_tree(obj_dict, output, indent):
 			render_tree(child, output, next_indent)
 			
 		for original, instances in parent_instances.items():
-			output.append(indent)
-			output.append('\t\t<ActorHierarchicalInstancedStaticMesh name="')
-			output.append(obj_name)
-			output.append('_')
-			output.append(original)
-			output.append('">\n')
-			output.append(indent)
-			output.append('\t\t\t<mesh name="')
-			output.append(original)
-			output.append('"/>\n')
-			output.append(indent)
-			output.append('\t\t\t')
-			output.append(obj_dict['transform'])
-			output.append(indent)
-			output.append('\t\t\t<Instances count="')
-			output.append(str(len(instances)))
-			output.append('">\n')
-			for instance in instances:
+			num_instances = len(instances)
+			if num_instances == 1:
 				output.append(indent)
-				output.append(str(instance))
+				output.append('\t\t<ActorMesh name="')
+				output.append(obj_name)
+				output.append('_')
+				output.append(original)
+				output.append('">\n')
+				output.append(indent)
+				output.append('\t\t\t<mesh name="')
+				output.append(original)
+				output.append('"/>\n')
+				output.append(indent)
+				output.append('\t\t')
 
-			output.append(indent)
-			output.append('\t\t\t</Instances>\n')
-			output.append(indent)
-			output.append('\t\t</ActorHierarchicalInstancedStaticMesh>\n')
+				output.append(instances[0][1])
+
+				output.append(indent)
+				output.append('\t\t</ActorMesh>\n')
+				
+			else:
+				output.append(indent)
+				output.append('\t\t<ActorHierarchicalInstancedStaticMesh name="')
+				output.append(obj_name)
+				output.append('_')
+				output.append(original)
+				output.append('">\n')
+				output.append(indent)
+				output.append('\t\t\t<mesh name="')
+				output.append(original)
+				output.append('"/>\n')
+				output.append(indent)
+				output.append('\t\t\t')
+				output.append(obj_dict['transform'])
+				output.append(indent)
+				output.append('\t\t\t<Instances count="')
+				output.append(str(len(instances)))
+				output.append('">\n')
+				for instance in instances:
+					output.append(indent)
+					output.append(instance[0])
+
+				output.append(indent)
+				output.append('\t\t\t</Instances>\n')
+				output.append(indent)
+				output.append('\t\t</ActorHierarchicalInstancedStaticMesh>\n')
 
 		output.append(indent)
 		output.append('\t</children>\n')
@@ -2866,6 +2911,7 @@ def collect_and_save(context, args, save_path):
 	log.info("building XML tree")
 
 	n = get_file_header()
+	n.push('\n')
 
 	for anim in anim_nodes:
 		n.push(anim)
