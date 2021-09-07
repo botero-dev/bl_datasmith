@@ -818,28 +818,33 @@ def exp_texture_object(name, exp_list):
 
 def exp_bump(node, exp_list):
 	height_input = node.inputs['Height']
-	if height_input.links:
-		from_node = height_input.links[0].from_node
-		if from_node.type == 'TEX_IMAGE':
-			image = from_node.image
-			name = sanitize_name(image.name)
-
-			# ensure that texture is exported
-			get_or_create_texture(name, image)
-
-			image_object = exp_texture_object(name, exp_list)
-			bump_node = Node("FunctionCall", { "Function": op_custom_functions["NORMAL_FROM_HEIGHT"]})
-			bump_node.push(Node("0", {"expression": image_object}))
-			bump_node.push(Node("1", get_expression(node.inputs['Strength'], exp_list)))
-			bump_node.push(Node("2", get_expression(node.inputs['Distance'], exp_list)))
-			bump_node.push(Node("3", get_expression(from_node.inputs['Vector'], exp_list)))
-			exp = exp_list.push(bump_node)
-			return {"expression": exp}
-
-		else:
-			log.warn("trying to export bump node, but input is not an image")
-	else:
+	if not height_input.links:
 		log.warn("trying to export bump node without connections")
+		return
+	
+	from_node = height_input.links[0].from_node
+	if from_node.type != 'TEX_IMAGE':
+		log.warn("trying to export bump node, but input is not an image")
+		return
+	
+	image = from_node.image
+	if not image:
+		log.warn("trying to export bump node, but input image node doesn't have an image")
+		return
+		
+	name = sanitize_name(image.name)
+
+	# ensure that texture is exported
+	get_or_create_texture(name, image)
+
+	image_object = exp_texture_object(name, exp_list)
+	bump_node = Node("FunctionCall", { "Function": op_custom_functions["NORMAL_FROM_HEIGHT"]})
+	bump_node.push(Node("0", {"expression": image_object}))
+	bump_node.push(Node("1", get_expression(node.inputs['Strength'], exp_list)))
+	bump_node.push(Node("2", get_expression(node.inputs['Distance'], exp_list)))
+	bump_node.push(Node("3", get_expression(from_node.inputs['Vector'], exp_list)))
+	exp = exp_list.push(bump_node)
+	return {"expression": exp}
 
 
 group_context = {}
@@ -970,7 +975,6 @@ def get_expression(field, exp_list, force_default=False):
 
 	socket = field.links[0].from_socket
 	return_exp = get_expression_inner(socket, exp_list)
-	assert return_exp != None
 	expression_log_prefix = prev_prefix
 
 	# if a color output is connected to a scalar input, average by using dot product
@@ -1000,7 +1004,7 @@ def get_expression(field, exp_list, force_default=False):
 	socket = field.links[0].from_socket
 	reverse_expressions[socket] = return_exp
 
-
+	# return_exp can be null, we may need some clearer behavior on corner cases
 	return return_exp
 
 
@@ -1139,8 +1143,8 @@ def get_expression_inner(socket, exp_list):
 		if socket.type == 'SHADER':
 			if "Normal" in node.inputs:
 				normal_input = node.inputs["Normal"]
-				if len(normal_input.links) > 0:
-					bsdf["Normal"] = get_expression(node.inputs['Normal'], exp_list)
+				if normal_input.links:
+					bsdf["Normal"] = get_expression(normal_input, exp_list)
 
 		return bsdf
 
