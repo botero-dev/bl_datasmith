@@ -864,6 +864,10 @@ def exp_group(socket, exp_list):
 	output_name = socket.name
 
 	node_tree = node.node_tree
+	log.debug("%sGROUP:%s" % (
+		expression_log_prefix,
+		node_tree.name,
+	))
 
 	# search for active output node:
 	output_node = None
@@ -932,8 +936,12 @@ def get_expression(field, exp_list, force_default=False):
 	# node inputs, but it does for scalars and colors
 	# TODO: check which cases we should be careful
 	global expression_log_prefix
-	field_path = f"{field.node.name}/{field.name}:{field.type}"
-	log.debug(expression_log_prefix + field_path)
+	node = field.node
+	log.debug("%s%s:%s/%s:%s" % (
+		expression_log_prefix,
+		node.type, node.name,
+		field.type, field.name,
+	))
 
 	if not field.links:
 		if field.type == 'VALUE':
@@ -954,12 +962,15 @@ def get_expression(field, exp_list, force_default=False):
 				"Roughness": {"expression": exp_scalar(1.0, exp_list)},
 			}
 			return bsdf
-		log.debug("field has no links, and no default value " + str(field))
+		log.warn("field has no links, and no default value " + str(field))
 		return None
 
 	prev_prefix = expression_log_prefix
 	expression_log_prefix += "|   "
-	return_exp = get_expression_inner(field, exp_list)
+
+	socket = field.links[0].from_socket
+	return_exp = get_expression_inner(socket, exp_list)
+	assert return_exp != None
 	expression_log_prefix = prev_prefix
 
 	# if a color output is connected to a scalar input, average by using dot product
@@ -975,18 +986,29 @@ def get_expression(field, exp_list, force_default=False):
 			dot_exp = exp_list.push(n)
 			return_exp = {"expression": dot_exp}
 
+	elif field.type == 'SHADER':
+		other_output = field.links[0].from_socket
+		if other_output.type != 'SHADER':
+			# maybe a color or a value was connected to a shader socket
+			# so we convert whatever value came to a basic emissive shader
+			value_exp = return_exp
+			return_exp = {
+				"EmissiveColor": value_exp,
+			}
+
+
 	socket = field.links[0].from_socket
 	reverse_expressions[socket] = return_exp
 
-	log.debug("%send field:%s = %s" % (expression_log_prefix, field_path, return_exp))
 
 	return return_exp
 
-def get_expression_inner(field, exp_list):
 
-	node = field.links[0].from_node
-	socket = field.links[0].from_socket
-	log.debug(f"{expression_log_prefix} get_expression_inner {node.name} {socket.name}")
+
+
+def get_expression_inner(socket, exp_list):
+	node = socket.node
+
 	# if this node is already exported, connect to that instead
 	# I am considering in
 	if socket in reverse_expressions:
@@ -1017,6 +1039,7 @@ def get_expression_inner(field, exp_list):
 			"Roughness": get_expression(node.inputs['Roughness'], exp_list),
 			"Specular": get_expression(node.inputs['Specular'], exp_list),
 		}
+
 
 		# only add opacity if transmission != 0
 		transmission_field = node.inputs['Transmission']
@@ -1112,6 +1135,14 @@ def get_expression_inner(field, exp_list):
 		}
 
 
+	if bsdf:
+		if socket.type == 'SHADER':
+			if "Normal" in node.inputs:
+				normal_input = node.inputs["Normal"]
+				if len(normal_input.links) > 0:
+					bsdf["Normal"] = get_expression(node.inputs['Normal'], exp_list)
+
+		return bsdf
 
 	if node.type == 'EMISSION':
 		mult = Node("Multiply")
@@ -1170,16 +1201,6 @@ def get_expression_inner(field, exp_list):
 		return expressions
 
 
-	if field.type == 'SHADER':
-
-		if bsdf:
-			if "Normal" in node.inputs:
-				normal_expression = get_expression(node.inputs['Normal'], exp_list)
-				if normal_expression:
-					bsdf["Normal"] = normal_expression
-		else:
-			log.error(f"couldn't find bsdf for field {field.name}")
-		return bsdf
 	# from here the return type should be {expression:node_idx, OutputIndex: socket_idx}
 	# Add > Input
 
@@ -1736,8 +1757,8 @@ def collect_object_custom_data(bl_obj, n, apply_modifiers, obj_mat, depsgraph, e
 					while next_prefix in libraries_prefixes:
 						next_prefix = "%s%d_" % (prefix, try_count)
 						try_count += 1
-					libraries_dict[bl_mesh.library] = next_prefix
 					prefix = next_prefix
+					libraries_dict[bl_mesh.library] = prefix
 				bl_mesh_name = prefix + bl_mesh_name
 
 
