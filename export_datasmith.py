@@ -2070,7 +2070,7 @@ def collect_object_metadata(obj_name, obj_type, obj):
 def node_value(name, value):
 	return Node(name, {'value': '{:6f}'.format(value)})
 def f(value):
-	return '{:6f}'.format(value)
+	return '%f' % value
 
 def collect_environment(world):
 

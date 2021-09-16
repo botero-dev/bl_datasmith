@@ -71,15 +71,19 @@ def is_char_valid(in_char):
 		return True
 	return False
 
-def sanitize_name(name):
-	first_char = ""
-	if not is_char_valid(name[0]):
-		first_char = "DS"
-	sanitized = "".join(letter if is_char_valid(letter) else '_' for letter in name)
-	return first_char + sanitized
+invalid_chars = [
+	".", ",", "/", "?", "<", ">", ";", ":", "'", "\"", "~", "`", 
+	"[", "]", "{", "}", "\\", "|",
+	"!", "@", "#", "$", "%", "^", "&", "*", "(", ")", "=",
+]
 
-def f(x):
-	return '{:6f}'.format(x)
+def sanitize_name(name):
+	output = name
+	for invalid_char in invalid_chars:
+		if invalid_char in name:
+			output = name.replace(invalid_char , "_")
+	return output
+
 
 class Node:
 	prefix = ""
@@ -129,7 +133,7 @@ class Node:
 		return size
 
 def node_value(name, value):
-	return Node(name, {'value': f(value)})
+	return Node(name, {'value': '%f' % value})
 
 class UDMesh():
 
