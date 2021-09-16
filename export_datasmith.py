@@ -1495,43 +1495,9 @@ import numpy as np
 def fill_umesh(umesh, bl_mesh):
 	# create copy to triangulate
 	m = bl_mesh.copy()
-	bm = bmesh.new()
-	bm.from_mesh(m)
-	bmesh.ops.triangulate(bm, faces=bm.faces[:])
-	# this is just to make sure a UV layer exists
-	bm.loops.layers.uv.verify()
-	bm.to_mesh(m)
-	bm.free()
-	# not sure if this is the best way to read normals
 	m.calc_normals_split()
-
-	loops = m.loops
-	num_loops = len(loops)
-
-	normals = np.empty(num_loops* 3, np.float32)
-	loops.foreach_get("normal", normals)
-	normals = normals.reshape((num_loops, 3))
-	normals = normals @ matrix_normals
-
 	m.transform(matrix_datasmith)
-
-	#finish inline mesh_copy_triangulate
-	if len(bl_mesh.materials) == 0:
-		umesh.materials[0] = 'DefaultMaterial'
-	else:
-		for idx, mat in enumerate(bl_mesh.materials):
-			umesh.materials[idx] = sanitize_name(getattr(mat, 'name', 'DefaultMaterial'))
-
-	polygons = m.polygons
-	num_polygons = len(polygons)
-	material_slots = np.empty(num_polygons, np.uint32)
-
-	polygons.foreach_get("material_index", material_slots)
-	umesh.tris_material_slot = material_slots # [p.material_index for p in m.polygons]
-
-	smoothing_groups = m.calc_smooth_groups()[0];
-	umesh.tris_smoothing_group = np.array(smoothing_groups, np.uint32)
-
+	
 	vertices = m.vertices
 	num_vertices = len(vertices)
 
@@ -1540,16 +1506,37 @@ def fill_umesh(umesh, bl_mesh):
 
 	umesh.vertices = vertices_array.reshape(-1, 3)
 
-	loops = m.loops
-	num_loops = len(loops)
+	# not sure if this is the best way to read normals
+	m.calc_loop_triangles()
+	loop_triangles = m.loop_triangles
+	num_triangles = len(loop_triangles)
+	num_loops = num_triangles * 3
 
 	triangles = np.empty(num_loops, np.uint32)
-	loops.foreach_get("vertex_index", triangles)
-
+	loop_triangles.foreach_get('vertices', triangles)
 	umesh.triangles = triangles
 
+	material_slots = np.empty(num_triangles, np.uint32)
+	loop_triangles.foreach_get('material_index', material_slots)
+	umesh.tris_material_slot = material_slots
+
+	normals = np.empty(num_loops * 3, np.float32)
+	loop_triangles.foreach_get('split_normals', normals)
+	normals = normals.reshape((-1, 3))
+#	normals = normals @ matrix_normals
 	umesh.vertex_normals = np.ascontiguousarray(normals, "<f4")
 
+	#finish inline mesh_copy_triangulate
+	if len(bl_mesh.materials) == 0:
+		umesh.materials[0] = 'DefaultMaterial'
+	else:
+		for idx, mat in enumerate(bl_mesh.materials):
+			material_name = getattr(mat, 'name', 'DefaultMaterial')
+			umesh.materials[idx] = sanitize_name(material_name)
+
+	smoothing_groups = m.calc_smooth_groups()[0];
+	umesh.tris_smoothing_group = np.array(smoothing_groups, np.uint32)
+	umesh.tris_smoothing_group = np.zeros(num_triangles, np.uint32)
 
 	uvs = []
 	num_uvs = min(8, len(m.uv_layers))
@@ -2769,12 +2756,123 @@ def collect_and_save(context, args, save_path):
 	else: # if not USE_OLD_OBJECT_ITERATOR:
 		# with the depsgraph iterator, we don't start with root objects and then find children.
 		# with the new object iterator, we read the depsgraph evaluated object array
-		print("USE NEW OBJECT ITERATOR")
+		log.info("USE NEW OBJECT ITERATOR")
 		obj_output = collect_depsgraph(objects, use_instanced_meshes)
 
-	log.info("collecting animations")
 	anims = []
-	if export_animations:
+	if export_animations and not USE_OLD_OBJECT_ITERATOR:
+		log.info("collecting animations new iterator")
+		anim_objs = {}
+		d = bpy.context.evaluated_depsgraph_get()
+		for instance in d.object_instances:
+			if instance.is_instance:
+				# we don't write instanced objects data for now.
+				continue
+			object_name = sanitize_name(instance.object.name)
+			anim_data = {
+				"name": object_name,
+				"animates": False,
+				"matrix": instance.matrix_world.copy(),
+			}
+			anim_objs[object_name] = anim_data
+	
+		frame_at_export_time = context.scene.frame_current
+		frame_start = context.scene.frame_start
+		frame_end = context.scene.frame_end
+
+		# TODO: found a bit late about this: we need to test and profile
+		# https://docs.blender.org/api/current/bpy_extras.anim_utils.html
+
+		num_frames = frame_end - frame_start + 1
+		
+		for frame_idx in range(frame_start, frame_end+1):
+			context.scene.frame_set(frame_idx)
+			d = bpy.context.evaluated_depsgraph_get()
+			for instance in d.object_instances:
+				if instance.is_instance:
+					# we don't write instanced objects data for now.
+					continue
+				object_name = sanitize_name(instance.object.name)
+				anim_data = anim_objs[object_name]
+				animates = anim_data["animates"]
+				if not animates:
+					if anim_data["matrix"] != instance.matrix_world:
+						animates = anim_data["animates"] = True
+						anim_data["frames"] = []
+
+				if animates:
+					frames = anim_data["frames"]
+					frames.append(instance.matrix_world.copy())
+
+		anims_strings = []
+		# write phase:
+		to_deg = 360 / math.tau
+		rot_fix = np.array((-to_deg, -to_deg, to_deg))
+		for obj_name, obj_data in anim_objs.items():
+			if not obj_data["animates"]:
+				continue
+			log.info(f"writing animation for obj:{obj_name}")
+
+			timeline_repr = ['''{
+				"actor": "''', obj_name, '",'
+			]
+
+			translations = np.empty((num_frames, 4), dtype=np.float32)
+			rotations = np.empty((num_frames, 4), dtype=np.float32)
+			scales = np.empty((num_frames, 4), dtype=np.float32)
+			translations[:, 0] = np.arange(frame_start, frame_end+1)
+			rotations[:, 0] = np.arange(frame_start, frame_end+1)
+			scales[:, 0] = np.arange(frame_start, frame_end+1)
+
+			timeline = obj_data["frames"]
+			for frame_idx, frame_mat in enumerate(timeline):
+				loc, rot, scale = frame_mat.decompose()
+				tx_slice = (frame_idx, slice(1,4))
+				translations[frame_idx, 1:4] = loc
+				rotations[frame_idx, 1:4] = rot_fix * rot.to_euler('XYZ')
+				scales[frame_idx, 1:4] = scale
+
+			trans_expression = ",".join(
+				'{"id":%d,"x":%f,"y":%f,"z":%f}'% tuple(v)
+				for v in translations
+			)
+			timeline_repr.extend(('"trans":[', trans_expression, '],'))
+
+			rot_expression = ",".join(
+				'{"id":%d,"x":%f,"y":%f,"z":%f}'% tuple(v)
+				for v in rotations
+			)
+			timeline_repr.extend(('"rot":[', rot_expression, '],'))
+
+			scale_expression = ",".join(
+				'{"id":%d,"x":%f,"y":%f,"z":%f}'% tuple(v)
+				for v in scales
+			)
+			timeline_repr.extend(('"scl":[', scale_expression, '],'))
+
+			timeline_repr.append('"type":"transform"}')
+			result = "".join(timeline_repr)
+			anims_strings.append(result)
+
+		if anims_strings:
+			output = ["""
+			{
+		"version": "0.1",
+		"fps": """,
+			str(context.scene.render.fps),
+		""",
+		"animations": [""",
+				",".join(anims_strings),
+				"]}"
+			]
+
+			output_text = "".join(output)
+			anims.append(output_text)
+
+		# cleanup
+		context.scene.frame_set(frame_at_export_time)
+	
+	if export_animations and USE_OLD_OBJECT_ITERATOR:
 
 		frame_at_export_time = context.scene.frame_current
 		frame_start = context.scene.frame_start
