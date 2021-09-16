@@ -1564,10 +1564,12 @@ def fill_umesh(umesh, bl_mesh):
 		elif uv_idx == active_uv:
 			uv_idx = 0
 
-		uv_channel = np.empty(num_loops * 2, np.float32)
 		uv_data = m.uv_layers[uv_idx].data
-		uv_data.foreach_get("uv", uv_channel)
-		uv_channel = uv_channel.reshape((num_loops, 2))
+		uv_loops = np.empty(len(uv_data) * 2, np.float32)
+		uv_data.foreach_get("uv", uv_loops)
+		uv_loops = uv_loops.reshape((-1, 2))
+
+		uv_channel = uv_loops[triangles]
 		uv_channel[:,1] = 1 - uv_channel[:,1]
 		uvs.append(uv_channel)
 	umesh.uvs = uvs
@@ -2270,7 +2272,6 @@ def get_mesh_name(bl_obj_inst):
 	bl_obj = bl_obj_inst.original
 
 	bl_mesh_name = bl_obj.data.name
-	print("creating mesh", bl_mesh_name)
 	if bl_obj.modifiers:
 		bl_mesh_name = "%s_%s" % (bl_obj.name, bl_mesh_name)
 
@@ -2305,6 +2306,7 @@ def get_mesh_name(bl_obj_inst):
 	if bl_mesh_name in meshes_per_original:
 		return bl_mesh_name
 
+	log.info("creating mesh:%s" % bl_mesh_name)
 	
 	mesh_data = meshes_per_original[bl_mesh_name] = {}
 	mesh_data['name'] = bl_mesh_name
@@ -2499,7 +2501,7 @@ def get_object_data(objects, _object, top_level_objs, object_name=None):
 			
 			parent_data['children'].append(object_data)
 		else: # is top level object
-			print("TOP LEVEL OBJ:%s"%object_data['name'])
+			log.info("TOP LEVEL OBJ:%s"%object_data['name'])
 			top_level_objs.append(object_data)
 	return object_data
 	
@@ -2982,10 +2984,12 @@ def collect_and_save(context, args, save_path):
 
 
 
-def save(context, *, filepath, **kwargs):
+def save(context, kwargs):
 
 	handler = None
 	use_logging = bool(kwargs["use_logging"])
+	use_profiling = bool(kwargs["use_profiling"])
+	filepath = kwargs["filepath"]
 
 	if use_logging:
 		log_path = filepath + ".log"
@@ -3004,7 +3008,21 @@ def save(context, *, filepath, **kwargs):
 		basepath, ext = path.splitext(filepath)
 
 		log.info("Starting Datasmith Export")
+
+		if use_profiling:
+			import cProfile
+			pr = cProfile.Profile()
+			pr.enable()
+		
 		collect_and_save(context, kwargs, basepath)
+
+		if use_profiling:
+			pr.disable()
+			prof_path = "%s.prof" % basepath
+			log.warn("writing profile to path: %s" % prof_path)
+			pr.dump_stats(prof_path)
+
+		
 		log.info("Finished Datasmith Export")
 
 	except Exception as error:

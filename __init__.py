@@ -107,18 +107,7 @@ class ExportDatasmith(bpy.types.Operator, ExportHelper):
 	def execute(self, context):
 		keywords = self.as_keywords(ignore=("filter_glob",))
 		from . import export_datasmith
-		profile = keywords["use_profiling"]
-		if not profile:
-			return export_datasmith.save(context, **keywords)
-		else:
-			import cProfile
-			pr = cProfile.Profile()
-			pr.enable()
-			result = export_datasmith.save(context, **keywords)
-			pr.disable()
-			path = "datasmith.prof"
-			pr.dump_stats(path)
-			return result
+		return export_datasmith.save(context, keywords)
 
 def menu_func_export(self, context):
 	self.layout.operator(ExportDatasmith.bl_idname, text="Datasmith (.udatasmith)")
