@@ -7,7 +7,7 @@ import itertools
 import bpy
 import numpy as np
 import logging
-import hashlib
+from hashlib import md5
 log = logging.getLogger("bl_datasmith")
 
 def read_array_data(io, data_struct):
@@ -267,7 +267,7 @@ class UDMesh():
 
 
 def calc_hash(image_path):
-	hash_md5 = hashlib.md5()
+	hash_md5 = md5()
 	with open(image_path, "rb") as f:
 		for chunk in iter(lambda: f.read(4096), b""):
 			hash_md5.update(chunk)
