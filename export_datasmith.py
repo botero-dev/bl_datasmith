@@ -1495,6 +1495,17 @@ import numpy as np
 def fill_umesh(umesh, bl_mesh):
 	# create copy to triangulate
 	m = bl_mesh.copy()
+
+	# triangulate with bmesh api
+	bm = bmesh.new()
+	bm.from_mesh(m)
+	bmesh.ops.triangulate(bm, faces=bm.faces[:])
+
+	bm.loops.layers.uv.verify() # this ensures that an UV layer exists
+
+	bm.to_mesh(m)
+	bm.free()
+	
 	m.calc_normals_split()
 	m.transform(matrix_datasmith)
 	
@@ -1556,7 +1567,7 @@ def fill_umesh(umesh, bl_mesh):
 		uv_data.foreach_get("uv", uv_loops)
 		uv_loops = uv_loops.reshape((-1, 2))
 
-		uv_channel = uv_loops[triangles]
+		uv_channel = uv_loops
 		uv_channel[:,1] = 1 - uv_channel[:,1]
 		uvs.append(uv_channel)
 	umesh.uvs = uvs
@@ -2705,62 +2716,12 @@ def render_tree(obj_dict, output, indent):
 	output.append("</")
 	output.append(obj_type)
 	output.append(">\n")
-	
-	
-
-datasmith_context = None
-def collect_and_save(context, args, save_path):
-
-	start_time = time.monotonic()
-
-	global datasmith_context
-	datasmith_context = {
-		"objects": [],
-		"anim_objects": [],
-		"textures": [],
-		"meshes": [],
-		"materials": [],
-		"material_curves": None,
-		"metadata": [],
-		"compatibility_mode": args["compatibility_mode"],
-		"libraries": {},
-	}
-
-	log.info("collecting objects")
-	all_objects = context.scene.objects
 
 
-	selected_only = args["export_selected"]
-	apply_modifiers = args["apply_modifiers"]
-	minimal_export = args["minimal_export"]
-	write_metadata = args["write_metadata"]
-	export_animations = args["export_animations"]
-	USE_OLD_OBJECT_ITERATOR = args["use_old_iterator"]
-	use_instanced_meshes = args["use_instanced_meshes"]
-
-	objects = []
-	obj_output = ""
-	if USE_OLD_OBJECT_ITERATOR:
-		datasmith_context['depsgraph'] = context.evaluated_depsgraph_get()
-		root_objects = [obj for obj in all_objects if obj.parent is None]
-		for obj in root_objects:
-			uobj = collect_object(
-				bl_obj=obj,
-				selected_only=selected_only,
-				apply_modifiers=apply_modifiers,
-				export_animations=export_animations,
-				export_metadata=write_metadata,
-			)
-			if uobj:
-				objects.append(uobj)
-	else: # if not USE_OLD_OBJECT_ITERATOR:
-		# with the depsgraph iterator, we don't start with root objects and then find children.
-		# with the new object iterator, we read the depsgraph evaluated object array
-		log.info("USE NEW OBJECT ITERATOR")
-		obj_output = collect_depsgraph(objects, use_instanced_meshes)
-
+def collect_anims(context, new_iterator: bool):
 	anims = []
-	if export_animations and not USE_OLD_OBJECT_ITERATOR:
+	anims_strings = []
+	if new_iterator:
 		log.info("collecting animations new iterator")
 		anim_objs = {}
 		d = bpy.context.evaluated_depsgraph_get()
@@ -2804,7 +2765,6 @@ def collect_and_save(context, args, save_path):
 					frames = anim_data["frames"]
 					frames.append(instance.matrix_world.copy())
 
-		anims_strings = []
 		# write phase:
 		to_deg = 360 / math.tau
 		rot_fix = np.array((-to_deg, -to_deg, to_deg))
@@ -2854,25 +2814,8 @@ def collect_and_save(context, args, save_path):
 			result = "".join(timeline_repr)
 			anims_strings.append(result)
 
-		if anims_strings:
-			output = ["""
-			{
-		"version": "0.1",
-		"fps": """,
-			str(context.scene.render.fps),
-		""",
-		"animations": [""",
-				",".join(anims_strings),
-				"]}"
-			]
 
-			output_text = "".join(output)
-			anims.append(output_text)
-
-		# cleanup
-		context.scene.frame_set(frame_at_export_time)
-	
-	if export_animations and USE_OLD_OBJECT_ITERATOR:
+	else: # if not new_iterator
 
 		frame_at_export_time = context.scene.frame_current
 		frame_start = context.scene.frame_start
@@ -2955,23 +2898,81 @@ def collect_and_save(context, args, save_path):
 			result = "".join(timeline_repr)
 			anims_strings.append(result)
 
-		if anims_strings:
-			output = ["""
-			{
-		"version": "0.1",
-		"fps": """,
+	if anims_strings:
+		output = [
+			"""\
+{
+	"version": "0.1",
+	"fps": """,
 			str(context.scene.render.fps),
-		""",
-		"animations": [""",
-				",".join(anims_strings),
-				"]}"
-			]
+			""",\n\t\t"animations": [""",
+			",".join(anims_strings),
+			"\n\t]\n}",
+		]
 
-			output_text = "".join(output)
-			anims.append(output_text)
+		output_text = "".join(output)
+		anims.append(output_text)
 
 		# cleanup
-		context.scene.frame_set(frame_at_export_time)
+	context.scene.frame_set(frame_at_export_time)
+
+	return anims
+	
+
+datasmith_context = None
+def collect_and_save(context, args, save_path):
+
+	start_time = time.monotonic()
+
+	global datasmith_context
+	datasmith_context = {
+		"objects": [],
+		"anim_objects": [],
+		"textures": [],
+		"meshes": [],
+		"materials": [],
+		"material_curves": None,
+		"metadata": [],
+		"compatibility_mode": args["compatibility_mode"],
+		"libraries": {},
+	}
+
+	log.info("collecting objects")
+	all_objects = context.scene.objects
+
+
+	selected_only = args["export_selected"]
+	apply_modifiers = args["apply_modifiers"]
+	minimal_export = args["minimal_export"]
+	write_metadata = args["write_metadata"]
+	export_animations = args["export_animations"]
+	USE_OLD_OBJECT_ITERATOR = args["use_old_iterator"]
+	use_instanced_meshes = args["use_instanced_meshes"]
+
+	objects = []
+	obj_output = ""
+	if USE_OLD_OBJECT_ITERATOR:
+		datasmith_context['depsgraph'] = context.evaluated_depsgraph_get()
+		root_objects = [obj for obj in all_objects if obj.parent is None]
+		for obj in root_objects:
+			uobj = collect_object(
+				bl_obj=obj,
+				selected_only=selected_only,
+				apply_modifiers=apply_modifiers,
+				export_animations=export_animations,
+				export_metadata=write_metadata,
+			)
+			if uobj:
+				objects.append(uobj)
+	else: # if not USE_OLD_OBJECT_ITERATOR:
+		# with the depsgraph iterator, we don't start with root objects and then find children.
+		# with the new object iterator, we read the depsgraph evaluated object array
+		log.info("USE NEW OBJECT ITERATOR")
+		obj_output = collect_depsgraph(objects, use_instanced_meshes)
+
+	anims = []
+	if export_animations:
+		anims = collect_anims(context, not USE_OLD_OBJECT_ITERATOR)
 
 
 	environment = collect_environment(context.scene.world)
@@ -3005,12 +3006,14 @@ def collect_and_save(context, args, save_path):
 
 	log.info("writing anims")
 	anim_nodes = []
-	for anim in anims:
 
+	assert len(anims) < 2
+	if anims:
+		anim = anims[0]
 		filename = path.join(basedir, folder_name, "anim_new.json")
 		log.info("writing to file:%s" % filename)
 		with open(filename, 'w') as f:
-			f.write(output_text)
+			f.write(anim)
 
 		anim = Node("LevelSequence", {"name": "anim_new"})
 		anim.push(Node("File", {"path": f"{folder_name}/anim_new.json"}))
