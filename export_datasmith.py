@@ -2508,10 +2508,10 @@ def get_object_data(objects, _object, top_level_objs, object_name=None):
 def create_object(obj):
 	assert obj
 
+	visible = not obj.hide_render and obj.show_instancer_for_render
 	object_data = {
 		'fields': [],
-		'attrib': [],
-		'visible': not obj.hide_render,
+		'attrib': [' visible="%s"'%visible],
 		'children': [],
 		'instances': {},
 	}
@@ -2652,9 +2652,10 @@ def render_tree(obj_dict, output, indent):
 	if children or parent_instances:
 		
 		output.append(indent)
-		output.append('\t<children visible="')
-		output.append(str(obj_dict['visible']))
-		output.append('">\n')
+		output.append('\t<children>\n')
+		# output.append('\t<children visible="')
+		# output.append(str(obj_dict['visible']))
+		# output.append('">\n')
 
 
 		for child in children:
