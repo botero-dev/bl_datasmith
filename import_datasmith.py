@@ -277,9 +277,9 @@ def load_udsmesh_file(mesh, node, iter):
                 assert mesh_size == mesh_size_2
 
                 unknown_b = unpack_from_file(8, "<II", f)
-                # log.debug(f"unknown_b {unknown_b}")
-                assert unknown_b[0] in (159, 160, 161)
-                assert unknown_b[1] == 0
+                log.debug(f"unknown_b {unknown_b}")
+                # assert unknown_b[0] in (159, 160, 161)
+                # assert unknown_b[1] == 0
 
                 mesh_start = f.tell()
 
