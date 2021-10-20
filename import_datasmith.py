@@ -82,9 +82,7 @@ def ignore(_ctx, node, iter):
 def handle_actor_children(target, node, iter):
         # strangely, an actor 'visible' flag is in its children node
         visible_str = node.attrib["visible"]
-        assert visible_str != "True" # just ensuring that we're not dealing with this
-        assert visible_str != "TRUE"
-        visible = visible_str == "true"
+        visible = visible_str in ["true", "True", "TRUE", "1"]
         # we also have "selector" (bool) and "selection" (int) which we won't check for now
 
         for action, child in iter:
@@ -366,7 +364,11 @@ def handle_texture(uscene, node, iter):
         texture_name = node.attrib["name"]
 # <Texture name="Metal_Corrogated_Shiny" texturemode="0" texturefilter="3" textureaddressx="0" textureaddressy="0" rgbcurve="-1.000000" file="APTO V3_Assets/Metal_Corrogated_Shiny.jpg">
         path = node.attrib["file"]
-        filename_start = path.index("/")
+        print("loading: %s" % path)
+        filename_start = path.find("/")
+        if filename_start == -1:
+            filename_start = path.find("\\")
+        assert filename_start != -1
         filename = path[filename_start+1:]
         texture = {
                 "name": texture_name,
@@ -399,6 +401,27 @@ def handle_mastermaterial(uscene, node, iter):
                         break
                 assert child.tag == "KeyValueProperty"
                 fill_keyvalueproperty(material, child, iter)
+        assert child == node
+        assert action == 'end'
+        uscene["materials"][material_name] = material
+
+def handle_pbrmaterial(uscene, node, iter):
+        material_name = node.attrib["name"] # see also: label
+        material = {
+                "name": material_name,
+                "type": node.tag,
+        }
+# <MasterMaterial name="Default-G7a1920d61156abc05a60135aefe8bc67"  label="Default" Type="1" Quality="0" >
+        for action, child in iter:
+                if action == 'end':
+                        assert child == node
+                        break
+                filler_map = {}
+                handler = filler_map.get(child.tag, unhandled)
+                handler(uscene, child, iter)
+                print(child.tag)
+                assert child.tag in ["Expressions", "BaseColor", "Metallic", "Roughness", "Specular", "Normal", "Opacity"]
+
         assert child == node
         assert action == 'end'
         uscene["materials"][material_name] = material
@@ -488,6 +511,7 @@ def handle_root_tag(uscene, node, iter):
                 "StaticMesh":     handle_staticmesh,
                 "Texture":        handle_texture,
                 "MasterMaterial": handle_mastermaterial,
+                "UEPbrMaterial":  handle_pbrmaterial,
         }
 
         handler = root_tags.get(node.tag, unhandled)
@@ -576,10 +600,13 @@ def link_texture(uscene, texture):
 
 def link_material(uscene, material):
         material_name = material["name"]
+        print("linking material: %s" % material_name)
         bl_mat = bpy.data.materials.new(material_name)
         material["bl_mat"] = bl_mat
 
-        if material["type"] == "MasterMaterial":
+        if material["type"] == "UEPbrMaterial":
+            pass
+        elif material["type"] == "MasterMaterial":
                 color = (1, 1, 1, 1)
                 color_prop = material.get("Color")
                 if color_prop:
@@ -610,17 +637,17 @@ def link_material(uscene, material):
 
 def link_mesh(uscene, mesh):
         mesh_name = mesh["name"]
+        print("linking mesh:%s" % mesh_name)
         bl_mesh = mesh["bl_mesh"]
         bl_mesh.materials.clear()
         material_ids = mesh["materials"]
         scene_mats = uscene["materials"]
         for mat_id, mat_name in material_ids:
+                print("mesh %s mat %s" % (mesh_name, mat_name))
                 material = scene_mats[mat_name]["bl_mat"]
                 bl_mesh.materials.append(material)
 
 
-
-                
 datasmith_transform_matrix = Matrix.Scale(0.01, 4)
 datasmith_transform_matrix[1][1] *= -1.0
 
