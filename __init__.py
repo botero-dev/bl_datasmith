@@ -48,10 +48,21 @@ class ImportDatasmith(bpy.types.Operator, ImportHelper):
 		default=False,
 	)
 	use_logging: BoolProperty(
-			name="Enable logging",
-			description="Enable logging to Window > System console",
-			default=True,
-		)
+		name="Enable logging",
+		description="Enable logging to Window > System console",
+		default=True,
+	)
+	log_level: EnumProperty(
+		name="Log level",
+		items=(
+			("NEVER", "Never",    "Don't write a logfile"),
+			("ERROR", "Errors",   "Only output critical information"),
+			("WARN",  "Warnings", "Write warnings in logfile"),
+			("INFO",  "Info",     "Write report info in logfile"),
+			("DEBUG", "Debug",    "Write debug info in logfile"),
+		),
+		default="INFO",
+	)
 
 	def execute(self, context):
 		keywords = self.as_keywords(ignore=("filter_glob",))
