@@ -384,7 +384,9 @@ def handle_texture(uscene, node, iter):
 	filename_start = path.find("/")
 	if filename_start == -1:
 		filename_start = path.find("\\")
-	assert filename_start != -1
+	if filename_start == -1:
+		log.error("unable to find path separators in path: %s" % path)
+		
 	filename = path[filename_start+1:]
 	texture = {
 		"name": texture_name,
@@ -439,6 +441,30 @@ def handle_mastermaterial(uscene, node, iter):
 	# the important thing to know at this point is that `material` dict
 	# has loaded many KeyValuePropertys from the MasterMaterial node
 	# such as "Texture" "TextureScale" "Color" "Opacity"
+
+	uscene["materials"][material_name] = material
+
+def handle_material(uscene, node, iter):
+	material_name = node.attrib["name"]
+	material = {
+		"name": material_name,
+		"type": node.tag,
+	}
+
+
+# <Material name="01_-_Default"  label="Default" >
+# <Shader> ... </Shader>
+	for action, child in iter:
+		if action == 'end':
+			assert child == node
+			break
+		else: 
+			unhandled(None, child, iter)
+
+	assert child == node
+	assert action == 'end'
+
+
 
 	uscene["materials"][material_name] = material
 
@@ -505,6 +531,12 @@ def handle_pbrmaterial_expressions(material, node, iter):
 		expression_data = (node_type, exp_node.attrib, material_inputs, material_props)
 		expressions.append(expression_data)
 
+def handle_pbrmaterial_value(material, node, iter):
+	check_close(node, iter)
+	key = node.tag
+	value = node.attrib["value"]
+	material[key] = value
+
 
 def handle_pbrmaterial(uscene, node, iter):
 	material_name = node.attrib["name"] # see also: label
@@ -524,19 +556,14 @@ def handle_pbrmaterial(uscene, node, iter):
 			"Input": handle_pbrmaterial_input,
 			"Expressions": handle_pbrmaterial_expressions,
 			"OpacityMaskClipValue": unhandled,
+			"ShadingModel": handle_pbrmaterial_value,
 		}
 		handler = filler_map.get(child_tag, unhandled)
+		if handler == unhandled:
+			log.error("pbrmaterial unhandled tag: %s" % child_tag)
+
 		handler(material, child, iter)
-		if not (child_tag in filler_map):
-			known_tags = [
-				"BaseColor", 
-				"Metallic", 
-				"Roughness", 
-				"Specular", 
-				"Normal", 
-				"Opacity", 
-			]
-			assert child_tag in known_tags, "found unknown tag %s" % child_tag
+
 
 	assert child == node
 	assert action == 'end'
@@ -642,6 +669,7 @@ def handle_root_tag(uscene, node, iter):
 		"Texture":        handle_texture,
 		"MasterMaterial": handle_mastermaterial,
 		"UEPbrMaterial":  handle_pbrmaterial,
+		"Material":       handle_material,
 	}
 
 	handler = root_tags.get(node.tag, unhandled)
@@ -733,15 +761,168 @@ def link_texture(uscene, texture):
 
 	tex_name = texture["name"]
 	log.info("linking texture %s %s" % (tex_name, full_path))
-	image = bpy.data.images.load(full_path)
+	try:
+		image = bpy.data.images.load(full_path, check_existing=True)
+	except:
+		log.error("texture not found: %s %s" % (tex_name, full_path))
+		image = None
 	texture["image"] = image
+
+
+def pbrmaterial_node_Texture(uscene, exp, node_tree):
+	exp_type, exp_attrs, exp_inputs, exp_props = exp
+	tex_name = exp_attrs["PathName"]
+	texture = uscene["textures"].get(tex_name)
+	image = None
+	if texture:
+		image = texture.get("image")
+	else:
+		log.warning("texture %s referenced from material not found")
+	node = node_tree.nodes.new('ShaderNodeTexImage')
+	node.image = image
+	return { "node": node }
+
+def pbrmaterial_node_Color(uscene, exp, node_tree):
+	exp_type, exp_attrs, exp_inputs, exp_props = exp
+	color = color_from_string(exp_attrs["constant"])
+	node = node_tree.nodes.new("ShaderNodeRGB")
+	node.outputs[0].default_value = color
+	return { "node": node }
+
+def pbrmaterial_node_Desaturation(uscene, exp, node_tree):
+	exp_type, exp_attrs, exp_inputs, exp_props = exp
+	nodes = node_tree.nodes
+
+	node_in_color = nodes.new("NodeReroute")
+	sockets = {}
+	sockets["0"] = node_in_color.inputs[0]
+
+	node_rgb_to_bw = nodes.new("ShaderNodeRGBToBW")
+	node_tree.links.new(node_in_color.outputs[0], node_rgb_to_bw.inputs["Color"])
+
+	node = node_lerp = nodes.new("ShaderNodeMixRGB")
+	node_tree.links.new(node_in_color.outputs[0],  node_lerp.inputs["Color1"])
+	node_tree.links.new(node_rgb_to_bw.outputs[0], node_lerp.inputs["Color2"])
+
+	sockets["1"] = node_lerp.inputs["Fac"] 
+	node_lerp.inputs["Fac"].default_value = 1.0
+	return { "node": node, "inputs": sockets }
+
+
+def pbrmaterial_node_Scalar(uscene, exp, node_tree):
+	exp_type, exp_attrs, exp_inputs, exp_props = exp
+	node = node_tree.nodes.new("ShaderNodeValue")
+	node.outputs[0].default_value = float(exp_attrs["constant"])
+	return { "node": node }
+
+def pbrmaterial_node_Add(uscene, exp, node_tree):
+	node = node_tree.nodes.new("ShaderNodeVectorMath")
+	node.operation = "ADD"
+	return { 
+		"node": node,
+		"inputs": {
+			"0": node.inputs[0],
+			"1": node.inputs[1],
+		},
+	}
+
+def pbrmaterial_node_Multiply(uscene, exp, node_tree):
+	node = node_tree.nodes.new("ShaderNodeVectorMath")
+	node.operation = "MULTIPLY"
+	return { 
+		"node": node,
+		"inputs": {
+			"0": node.inputs[0],
+			"1": node.inputs[1],
+		},
+	}
+
+def pbrmaterial_node_Power(uscene, exp, node_tree):
+	exp_type, exp_attrs, exp_inputs, exp_props = exp
+	node = node_tree.nodes.new("ShaderNodeMath")
+	node.operation = "POWER"
+	default_exponent = exp_props.get("ConstExponent", None)
+	if default_exponent:
+		prop_type, prop_value_string = default_exponent
+		assert prop_type == "Float"
+		prop_value = float(prop_value_string)
+		node.inputs[1].default_value = prop_value
+
+	return { 
+		"node": node,
+		"inputs": {
+			"0": node.inputs[0],
+			"1": node.inputs[1],
+		},
+	}
+
+def pbrmaterial_node_VertexNormalWS(uscene, exp, node_tree):
+	node = node_tree.nodes.new("ShaderNodeNewGeometry")
+	return { 
+		"node": node,
+		"outputs": {
+			0: node.outputs["Normal"],
+		},
+	}
+
+def pbrmaterial_node_LinearInterpolate(uscene, exp, node_tree):
+	node = node_tree.nodes.new("ShaderNodeMixRGB")
+	return { 
+		"node": node,
+		"inputs": {
+			"0": node.inputs["Color1"],
+			"1": node.inputs["Color2"],
+			"2": node.inputs["Fac"],
+		},
+	}
+			
+def pbrmaterial_node_OneMinus(uscene, exp, node_tree):
+	node = node_tree.nodes.new("ShaderNodeInvert")
+	return { 
+		"node": node,
+		"inputs": {
+			"0": node.inputs["Color"],
+		},
+	}
+
+def pbrmaterial_node_Fresnel(uscene, exp, node_tree):
+	node = node_tree.nodes.new("ShaderNodeFresnel")
+	# in UE4 inputs are:
+	# 0: ExponentIn
+	# 0: BaseReflectFractionIn
+	# 0: Normal
+
+	return { 
+		"node": node, 
+		"inputs": {
+			"0": node.inputs["IOR"],
+			"2": node.inputs["Normal"],
+		},
+	}
+
+def pbrmaterial_node_TextureCoordinate(uscene, exp, node_tree):
+	node = node_tree.nodes.new("ShaderNodeUVMap")
+	return { "node": node }
+
+pbrmaterial_node_functions = {
+	"Texture": pbrmaterial_node_Texture,
+	"Color": pbrmaterial_node_Color,
+	"Desaturation": pbrmaterial_node_Desaturation,
+	"Scalar": pbrmaterial_node_Scalar,
+	"Add": pbrmaterial_node_Add,
+	"Multiply": pbrmaterial_node_Multiply,
+	"Power": pbrmaterial_node_Power,
+	"VertexNormalWS": pbrmaterial_node_VertexNormalWS,
+	"LinearInterpolate": pbrmaterial_node_LinearInterpolate,
+	"OneMinus": pbrmaterial_node_OneMinus,
+	"Fresnel": pbrmaterial_node_Fresnel,
+	"TextureCoordinate": pbrmaterial_node_TextureCoordinate,
+}
 
 def link_pbr_material(uscene, material):
 	log.debug("linking pbr material %s" % material["name"])
 
 	expressions = material["expressions"]
-	bl_nodes = material["bl_nodes"] = []
-	bl_sockets = material["bl_sockets"] = []
 	bf_nodes = material["bf_nodes"] = []
 	inputs = material["inputs"]
 	log.info(expressions)
@@ -749,7 +930,6 @@ def link_pbr_material(uscene, material):
 	bl_mat = material["bl_mat"]
 	bl_mat.use_nodes = True
 	node_tree = bl_mat.node_tree
-	nodes = node_tree.nodes
 
 	for exp in expressions:
 		exp_type, exp_attrs, exp_inputs, exp_props = exp
@@ -758,118 +938,60 @@ def link_pbr_material(uscene, material):
 		out_sockets = {}
 		log.debug("creating expression '%s'" % exp_type)
 
-		if exp_type == "Texture":
-			tex_name = exp_attrs["PathName"]
-			texture = uscene["textures"][tex_name]
-			image = texture["image"]
-			node = image_node = nodes.new('ShaderNodeTexImage')
-			# node_tree.links.new(image_node.outputs['Color'], principled.inputs['Base Color'])
-			image_node.image = image
 
-		elif exp_type == "Color":
-			color = color_from_string(exp_attrs["constant"])
-			node = nodes.new("ShaderNodeRGB")
-			node.outputs[0].default_value = color
+		handler = pbrmaterial_node_functions.get(exp_type)
+		bf_node = None
+		if handler:
+			data = handler(uscene, exp, node_tree)
+			bf_node = (data["node"], data.get("inputs"), data.get("outputs"))
+		else:
+			log.error("exp_type not supported: %s" % exp_type)
+			# leave bf_node as None
 
-		elif exp_type == "Desaturation":
-			node_in_color = nodes.new("NodeReroute")
-			sockets["0"] = node_in_color.inputs[0]
-
-			node_rgb_to_bw = nodes.new("ShaderNodeRGBToBW")
-			node_tree.links.new(node_in_color.outputs[0], node_rgb_to_bw.inputs["Color"])
-
-			node = node_lerp = nodes.new("ShaderNodeMixRGB")
-			node_tree.links.new(node_in_color.outputs[0],  node_lerp.inputs["Color1"])
-			node_tree.links.new(node_rgb_to_bw.outputs[0], node_lerp.inputs["Color2"])
-
-			sockets["1"] = node_lerp.inputs["Fac"] 
-			node_lerp.inputs["Fac"].default_value = 1.0
-
-		elif exp_type == "Scalar":
-			node = node_value = nodes.new("ShaderNodeValue")
-			node_value.outputs[0].default_value = float(exp_attrs["constant"])
-
-		elif exp_type == "Add":
-			node = nodes.new("ShaderNodeVectorMath")
-			node.operation = "ADD"
-			sockets["0"] = node.inputs[0]
-			sockets["1"] = node.inputs[1]
-
-		elif exp_type == "Multiply":
-			node = nodes.new("ShaderNodeVectorMath")
-			node.operation = "MULTIPLY"
-			sockets["0"] = node.inputs[0]
-			sockets["1"] = node.inputs[1]
-
-		elif exp_type == "Power":
-			node = nodes.new("ShaderNodeMath")
-			node.operation = "POWER"
-			sockets["0"] = node.inputs[0]
-			sockets["1"] = node.inputs[1]
-			default_exponent = exp_props.get("ConstExponent", None)
-			if default_exponent:
-				prop_type, prop_value_string = default_exponent
-				assert prop_type == "Float"
-				prop_value = float(prop_value_string)
-				node.inputs[1].default_value = prop_value
-
-		elif exp_type == "VertexNormalWS":
-			node = nodes.new("ShaderNodeNewGeometry")
-			out_sockets[0] = node.outputs["Normal"] # theres also true normal
-
-		elif exp_type == "LinearInterpolate":
-			node = nodes.new("ShaderNodeMixRGB")
-			sockets["0"] = node.inputs["Color1"]
-			sockets["1"] = node.inputs["Color2"]
-			sockets["2"] = node.inputs["Fac"]
-			
-		elif exp_type == "OneMinus":
-			node = nodes.new("ShaderNodeInvert")
-			sockets["0"] = node.inputs["Color"]
-		elif exp_type == "Fresnel":
-			node = nodes.new("ShaderNodeFresnel")
-			# in UE4 inputs are:
-			# 0: ExponentIn
-			# 0: BaseReflectFractionIn
-			# 0: Normal
-
-			sockets["0"] = node.inputs["IOR"]
-			sockets["2"] = node.inputs["Normal"]
-		elif exp_type == "TextureCoordinate":
-			node = nodes.new("ShaderNodeUVMap")
-
-		assert node, "No node created for exp type: %s" % exp_type
-		bl_nodes.append(node)
-		bl_sockets.append(sockets)
-		bf_nodes.append((node, sockets, out_sockets))
+		bf_nodes.append(bf_node)
 
 		name = exp_attrs.get("Name", None)
-		if name:
+		if name and bf_node:
+			node = bf_node[0]
 			node.name = name
 			node.label = name
 
-	for idx, exp in enumerate(expressions):
+	for exp_idx, exp in enumerate(expressions):
 		exp_type, exp_attrs, exp_inputs, exp_props = exp
 
-		node, sockets, out_sockets = bf_nodes[idx]
-		log.debug("linking expression '%s'" % exp_type)
+		target_node = bf_nodes[exp_idx]
+		# only create links if the exp_type was valid, otherwise skip
+		if target_node:
+			node, target_inputs, out_sockets = target_node
+			if target_inputs:
+				log.debug("linking expression '%s'" % exp_type)
 
-		for exp_input_id, exp_from_socket in exp_inputs.items():
-			node_idx, socket_idx = exp_from_socket
-			incoming_node, _, incoming_out_sockets = bf_nodes[node_idx]
-			log.info("idx %d data %s" % (socket_idx, incoming_node))
-			incoming_socket = incoming_out_sockets.get(socket_idx, None)
-			if not incoming_socket:
-				incoming_socket = incoming_node.outputs[socket_idx]
+				for exp_input_id, exp_from_socket in exp_inputs.items():
+					node_idx, socket_idx = exp_from_socket
+					origin_node = bf_nodes[node_idx]
+					if origin_node:
+						incoming_node, _, incoming_out_sockets = origin_node
+						log.info("idx %d data %s" % (socket_idx, incoming_node))
+						incoming_socket = None
+						if incoming_out_sockets:
+							incoming_socket = incoming_out_sockets.get(socket_idx, None)
+						if not incoming_socket:
+							incoming_socket = incoming_node.outputs[socket_idx]
 
-			input_idx = int(exp_input_id)
-			input_socket = sockets[exp_input_id]
+#				input_idx = int(exp_input_id)
+				input_socket = target_inputs.get(exp_input_id)
 
-			node_tree.links.new(incoming_socket, input_socket)
+				node_tree.links.new(incoming_socket, input_socket)
 
+	shading_model = material.get("ShadingModel")
+	if shading_model:
+		if shading_model == "ThinTranslucent":
+			bl_mat.blend_method = "BLEND"
+		else:
+			log.error("unrecognized ShadingModel: %s" % shading_model)
 
 	# after dealing with expressions, set inputs to master node
-	principled = nodes["Principled BSDF"]
+	principled = node_tree.nodes["Principled BSDF"]
 	material_inputs = material["inputs"]
 	for input_id, input_nodepath in material_inputs.items():
 		input_id_map = {
@@ -882,7 +1004,7 @@ def link_pbr_material(uscene, material):
 		if target_input_name:
 			from_node_idx, from_socket_idx = input_nodepath
 			input_socket = principled.inputs[target_input_name]
-			from_node = bl_nodes[from_node_idx]
+			from_node = bf_nodes[from_node_idx][0]
 			from_socket = from_node.outputs[from_socket_idx]
 			node_tree.links.new(from_socket, input_socket)
 
@@ -941,8 +1063,10 @@ def link_mesh(uscene, mesh):
 		if mat_data:
 			mat_id, mat_name = mat_data
 			log.debug("mesh %s mat %s" % (mesh_name, mat_name))
-			material = scene_mats[mat_name]["bl_mat"]
-			mesh_mats[idx] = material
+			mat_data2 = scene_mats.get(mat_name)
+			if mat_data2:
+				material = mat_data2["bl_mat"]
+				mesh_mats[idx] = material
 
 
 datasmith_transform_matrix = Matrix.Scale(0.01, 4)
