@@ -64,9 +64,9 @@ def exp_texcoord(exp_list, index=0, u_tiling=1.0, v_tiling=1.0):
 	n["VTiling"] = v_tiling
 
 	pad = Node("AppendVector")
-	pad.push(Node("0", {"expression": exp_list.push(n) }))
+	pad.push(exp_input("0", exp_list.push(n) ))
 	zero = exp_scalar(0, exp_list)
-	pad.push(Node("1", {"expression": zero }))
+	pad.push(exp_input("1", zero ))
 	return {"expression": exp_list.push(pad) }
 
 def exp_texcoord_node(socket, exp_list):
@@ -99,8 +99,8 @@ def exp_tex_noise(socket, exp_list):
 	exp_1 = get_expression(socket.node.inputs['Vector'], exp_list)
 	exp_2 = get_expression(socket.node.inputs['Scale'], exp_list)
 	if exp_1:
-		n.push(Node("0", exp_1))
-	n.push(Node("1", exp_2))
+		n.push(exp_input("0", exp_1))
+	n.push(exp_input("1", exp_2))
 	return { "expression": exp_list.push(n), "OutputIndex":out_socket }
 
 
@@ -146,24 +146,24 @@ def exp_texture(path, name=None): # , tex_coord_exp):
 def exp_rgb_to_bw(socket, exp_list):
 	input_exp = get_expression(socket.node.inputs[0], exp_list)
 	n = Node("DotProduct")
-	n.push(Node("0", input_exp))
+	n.push(exp_input("0", input_exp))
 	exp_1 = exp_vector( (0.2126, 0.7152, 0.0722), exp_list )
-	n.push( Node( "1", { "expression": exp_1 } ) )
+	n.push( exp_input( "1", exp_1 ) )
 	dot_exp = exp_list.push(n)
 	return { "expression": dot_exp }
 
 def exp_make_vec3(socket, exp_list):
 	node = socket.node
 	output = Node("FunctionCall", { "Function": "/Engine/Functions/Engine_MaterialFunctions02/Utility/MakeFloat3" })
-	output.push(Node("0", get_expression(node.inputs[0], exp_list)))
-	output.push(Node("1", get_expression(node.inputs[1], exp_list)))
-	output.push(Node("2", get_expression(node.inputs[2], exp_list)))
+	output.push(exp_input("0", get_expression(node.inputs[0], exp_list)))
+	output.push(exp_input("1", get_expression(node.inputs[1], exp_list)))
+	output.push(exp_input("2", get_expression(node.inputs[2], exp_list)))
 	return { "expression": exp_list.push(output) }
 
 def exp_make_hsv(socket, exp_list):
 	vec3_input = exp_make_vec3(socket, exp_list)
 	output = Node("FunctionCall",  { "Function": "/DatasmithBlenderContent/MaterialFunctions/HSV_To_RGB" })
-	output.push(Node("0", vec3_input))
+	output.push(exp_input("0", vec3_input))
 	return { "expression": exp_list.push(output) }
 
 def exp_break_vec3(socket, exp_list):
@@ -172,7 +172,7 @@ def exp_break_vec3(socket, exp_list):
 		expression_idx = cached_nodes[socket.node]
 	else:
 		output = Node("FunctionCall",  { "Function": "/Engine/Functions/Engine_MaterialFunctions02/Utility/BreakOutFloat3Components" })
-		output.push(Node("0", get_expression(socket.node.inputs[0], exp_list)))
+		output.push(exp_input("0", get_expression(socket.node.inputs[0], exp_list)))
 		expression_idx = exp_list.push(output)
 		cached_nodes[socket.node] = expression_idx
 
@@ -186,10 +186,10 @@ def exp_break_hsv(socket, exp_list):
 		expression_idx = cached_nodes[socket.node]
 	else:
 		input = Node("FunctionCall",  { "Function": "/DatasmithBlenderContent/MaterialFunctions/RGB_To_HSV" })
-		hsv_expression_idx = input.push(Node("0", get_expression(socket.node.inputs[0], exp_list)))
+		hsv_expression_idx = input.push(exp_input("0", get_expression(socket.node.inputs[0], exp_list)))
 
 		output = Node("FunctionCall",  { "Function": "/Engine/Functions/Engine_MaterialFunctions02/Utility/BreakOutFloat3Components" })
-		output.push(Node("0", { "expression": hsv_expression_idx }))
+		output.push(exp_input("0", hsv_expression_idx ))
 		expression_idx = exp_list.push(output)
 		cached_nodes[socket.node] = expression_idx
 
@@ -256,14 +256,14 @@ def exp_generic(name, inputs, exp_list, force_default=False):
 	n = Node(name)
 	for idx, input in enumerate(inputs):
 		input_exp = get_expression(input, exp_list, force_default)
-		n.push(Node(str(idx), input_exp))
+		n.push(exp_input(idx, input_exp))
 	return { "expression": exp_list.push(n) }
 
 def exp_function_call(path, inputs, exp_list, force_default=False):
 	n = Node("FunctionCall", {"Function": path})
 	for idx, input in enumerate(inputs):
 		input_exp = get_expression(input, exp_list, force_default)
-		n.push(Node(str(idx), input_exp))
+		n.push(exp_input(idx, input_exp))
 	return { "expression": exp_list.push(n) }
 
 def exp_math(node, exp_list):
@@ -295,43 +295,43 @@ def exp_math(node, exp_list):
 		n = None
 		if op == 'RADIANS':
 			n = Node("Multiply")
-			n.push(Node("0", in_0))
-			n.push(Node("1", { "expression": exp_scalar(math.tau / 360, exp_list)}))
+			n.push(exp_input("0", in_0))
+			n.push(exp_input("1", { "expression": exp_scalar(math.tau / 360, exp_list)}))
 		elif op == 'DEGREES':
 			n = Node("Multiply")
-			n.push(Node("0", in_0))
-			n.push(Node("1", { "expression": exp_scalar(360 / math.tau, exp_list)}))
+			n.push(exp_input("0", in_0))
+			n.push(exp_input("1", { "expression": exp_scalar(360 / math.tau, exp_list)}))
 		else:
 			# these use two inputs
 			in_1 = get_expression(node.inputs[1], exp_list)
 			if op == 'LOGARITHM': # take two logarithms and divide
 				log0 = Node("Logarithm2")
-				log0.push(Node("0", in_0))
+				log0.push(exp_input("0", in_0))
 				exp_0 = exp_list.push(log0)
 				log1 = Node("Logarithm2")
-				log1.push(Node("0", in_1))
+				log1.push(exp_input("0", in_1))
 				exp_1 = exp_list.push(log1)
 				n = Node("Divide")
-				n.push(Node("0", {"expression": exp_0}))
-				n.push(Node("1", {"expression": exp_1}))
+				n.push(exp_input("0", {"expression": exp_0}))
+				n.push(exp_input("1", {"expression": exp_1}))
 			elif op == 'LESS_THAN':
 				n = Node("If")
 				one = {"expression": exp_scalar(1.0, exp_list)}
 				zero = {"expression": exp_scalar(0.0, exp_list)}
-				n.push(Node("0", in_0)) # A
-				n.push(Node("1", in_1)) # B
-				n.push(Node("2", zero)) # A > B
-				n.push(Node("3", one)) # A == B
-				n.push(Node("4", one)) # A < B
+				n.push(exp_input("0", in_0)) # A
+				n.push(exp_input("1", in_1)) # B
+				n.push(exp_input("2", zero)) # A > B
+				n.push(exp_input("3", one)) # A == B
+				n.push(exp_input("4", one)) # A < B
 			elif op == 'GREATER_THAN':
 				n = Node("If")
 				one = {"expression": exp_scalar(1.0, exp_list)}
 				zero = {"expression": exp_scalar(0.0, exp_list)}
-				n.push(Node("0", in_0)) # A
-				n.push(Node("1", in_1)) # B
-				n.push(Node("2", one)) # A > B
-				n.push(Node("3", zero)) # A == B
-				n.push(Node("4", zero)) # A < B
+				n.push(exp_input("0", in_0)) # A
+				n.push(exp_input("1", in_1)) # B
+				n.push(exp_input("2", one)) # A > B
+				n.push(exp_input("3", zero)) # A == B
+				n.push(exp_input("4", zero)) # A < B
 		assert n
 		exp = { "expression": exp_list.push(n) }
 
@@ -340,7 +340,7 @@ def exp_math(node, exp_list):
 
 	if getattr(node, "use_clamp", False):
 		clamp = Node("Saturate")
-		clamp.push(Node("0", exp))
+		clamp.push(exp_input("0", exp))
 		exp = { "expression": exp_list.push(clamp) }
 	return exp
 
@@ -407,8 +407,8 @@ def exp_vect_math(node, exp_list):
 		)
 	elif node_op == 'LENGTH':
 		n = Node("Distance")
-		n.push(Node("0", get_expression(node.inputs[0], exp_list) ))
-		n.push(Node("1", { "expression": exp_vector((0,0,0), exp_list) } ))
+		n.push(exp_input("0", get_expression(node.inputs[0], exp_list) ))
+		n.push(exp_input("1", exp_vector((0,0,0), exp_list) ))
 		return { "expression": exp_list.push(n) }
 
 	log.error("VECT_MATH node operation:%s not found" % node_op)
@@ -418,9 +418,9 @@ def exp_vect_math(node, exp_list):
 def exp_gamma(node, exp_list):
 	n = Node(MATH_TWO_INPUTS['POWER'])
 	exp_0 = get_expression(node.inputs["Color"], exp_list)
-	n.push(Node("0", exp_0))
+	n.push(exp_input("0", exp_0))
 	exp_1 = get_expression(node.inputs["Gamma"], exp_list)
-	n.push(Node("1", exp_1))
+	n.push(exp_input("1", exp_1))
 	return {"expression": exp_list.push(n)}
 
 op_map_color = {
@@ -455,8 +455,8 @@ def exp_blend(exp_0, exp_1, blend_type, exp_list):
 	else:
 		n = Node("FunctionCall", { "Function": op_map_color[blend_type]})
 	assert n
-	n.push(Node("0", exp_0))
-	n.push(Node("1", exp_1))
+	n.push(exp_input("0", exp_0))
+	n.push(exp_input("1", exp_1))
 	return {"expression": exp_list.push(n)}
 
 def exp_mixrgb(node, exp_list):
@@ -468,10 +468,10 @@ def exp_mixrgb(node, exp_list):
 	exp_result = exp_blend(exp_1, exp_2, node.blend_type, exp_list)
 
 	lerp = Node("LinearInterpolate")
-	lerp.push(Node("0", exp_1))
-	lerp.push(Node("1", exp_result))
+	lerp.push(exp_input("0", exp_1))
+	lerp.push(exp_input("1", exp_result))
 	exp_fac = get_expression(node.inputs['Fac'], exp_list)
-	lerp.push(Node("2", exp_fac))
+	lerp.push(exp_input("2", exp_fac))
 
 	return exp_list.push(lerp)
 
@@ -498,7 +498,7 @@ def exp_generic_function(node, exp_list, node_type, socket_names):
 	n = Node("FunctionCall", { "Function": op_custom_functions[node_type]})
 	for idx, socket_name in enumerate(socket_names):
 		input_expression = get_expression(node.inputs[socket_name], exp_list)
-		n.push(Node(str(idx), input_expression))
+		n.push(exp_input(idx, input_expression))
 	return {"expression": exp_list.push(n) }
 
 def exp_bright_contrast(node, exp_list):
@@ -507,28 +507,40 @@ def exp_bright_contrast(node, exp_list):
 def exp_hsv(node, exp_list):
 	n = Node("FunctionCall", { "Function": op_custom_functions["HUE_SAT"]})
 	exp_hue = get_expression(node.inputs['Hue'], exp_list)
-	n.push(Node("0", exp_hue))
+	n.push(exp_input("0", exp_hue))
 	exp_sat = get_expression(node.inputs['Saturation'], exp_list)
-	n.push(Node("1", exp_sat))
+	n.push(exp_input("1", exp_sat))
 	exp_value = get_expression(node.inputs['Value'], exp_list)
-	n.push(Node("2", exp_value))
+	n.push(exp_input("2", exp_value))
 	exp_fac = get_expression(node.inputs['Fac'], exp_list)
-	n.push(Node("3", exp_fac))
+	n.push(exp_input("3", exp_fac))
 	exp_color = get_expression(node.inputs['Color'], exp_list)
-	n.push(Node("4", exp_color))
+	n.push(exp_input("4", exp_color))
 	return exp_list.push(n)
+
+
+def exp_input(input_idx, expression, output_idx = 0):
+	expression_idx = expression
+	if type(expression) is dict:
+		if "expression" not in expression:
+			log.error(expression)
+		expression_idx = expression["expression"]
+		output_idx = expression.get("OutputIndex", 0)
+	elif type(expression) is tuple:
+		expression_idx, output_idx = expression
+	return '\n\t\t\t\t<Input Name="%s" expression="%s" OutputIndex="%s"/>' % (input_idx, expression_idx, output_idx)
 
 def exp_invert(node, exp_list):
 	n = Node("OneMinus")
 	exp_color = get_expression(node.inputs['Color'], exp_list)
-	n.push(Node("0", exp_color))
+	n.push(exp_input("0", exp_color))
 	invert_exp = exp_list.push(n)
 
 	blend = Node("LinearInterpolate")
 	exp_fac = get_expression(node.inputs['Fac'], exp_list)
-	blend.push(Node("0", exp_color))
-	blend.push(Node("1", {"expression": invert_exp}))
-	blend.push(Node("2", exp_fac))
+	blend.push(exp_input("0", exp_color))
+	blend.push(exp_input("1", {"expression": invert_exp}))
+	blend.push(exp_input("2", exp_fac))
 
 	return exp_list.push(blend)
 
@@ -557,10 +569,10 @@ def exp_mapping(node, exp_list):
 	input_location = get_expression(node.inputs['Location'], exp_list)
 	input_rotation = get_expression(node.inputs['Rotation'], exp_list)
 	input_scale = get_expression(node.inputs['Scale'], exp_list)
-	n.push(Node("0", input_vector))
-	n.push(Node("1", input_location))
-	n.push(Node("2", input_rotation))
-	n.push(Node("3", input_scale))
+	n.push(exp_input("0", input_vector))
+	n.push(exp_input("1", input_location))
+	n.push(exp_input("2", input_rotation))
+	n.push(exp_input("3", input_scale))
 
 	return {"expression": exp_list.push(n)}
 def exp_normal_map(socket, exp_list):
@@ -575,8 +587,8 @@ def exp_normal_map(socket, exp_list):
 	strength_input = socket.node.inputs["Strength"]
 	if strength_input.links or strength_input.default_value != 1.0:
 		node_strength = Node("FunctionCall", {"Function": "/DatasmithBlenderContent/MaterialFunctions/NormalStrength"})
-		node_strength.push(Node("0", return_exp))
-		node_strength.push(Node("1", get_expression(strength_input, exp_list)))
+		node_strength.push(exp_input("0", return_exp))
+		node_strength.push(exp_input("1", get_expression(strength_input, exp_list)))
 		return_exp = { "expression": exp_list.push(node_strength) }
 	return return_exp
 
@@ -650,7 +662,7 @@ def exp_layer_weight(socket, exp_list):
 	else:
 		exp_blend = get_expression(socket.node.inputs['Blend'], exp_list)
 		n = Node("FunctionCall", { "Function": op_custom_functions['LAYER_WEIGHT']})
-		n.push(Node("0", exp_blend))
+		n.push(exp_input("0", exp_blend))
 		expr = exp_list.push(n)
 		reverse_expressions[socket.node] = expr
 
@@ -728,10 +740,25 @@ def add_material_curve2(curve):
 def exp_blackbody(from_node, exp_list):
 	n = Node("BlackBody")
 	exp_0 = get_expression(from_node.inputs[0], exp_list)
-	n.push(Node("0", exp_0))
+	n.push(exp_input("0", exp_0))
 	exp = exp_list.push(n)
 	return {"expression": exp}
 
+def exp_shader_to_rgb(socket, exp_list):
+	shader_exp = get_expression(socket.node.inputs[0], exp_list)
+	basecolor = shader_exp.get("BaseColor")
+	emissive = shader_exp.get("EmissiveColor")
+	if basecolor and emissive:
+		n = Node("Add")
+		n.push(exp_input("0", basecolor))
+		n.push(exp_input("1", emissive))
+		return_exp = exp_list.push(n)
+		return {"expression": return_exp}
+	elif basecolor:
+		return basecolor
+	elif emissive:
+		return emissive
+	
 def exp_color_ramp(from_node, exp_list):
 	ramp = from_node.color_ramp
 
@@ -745,17 +772,17 @@ def exp_color_ramp(from_node, exp_list):
 		pixel_offset = exp_scalar(0.5, exp_list)
 		vertical_res = exp_scalar(1/DATASMITH_TEXTURE_SIZE, exp_list) # curves texture size
 		n = Node("Add")
-		n.push(Node("0", {"expression": curve_idx}))
-		n.push(Node("1", {"expression": pixel_offset}))
+		n.push(exp_input("0", curve_idx))
+		n.push(exp_input("1", pixel_offset))
 		curve_y = exp_list.push(n)
 		n2 = Node("Multiply")
-		n2.push(Node("0", {"expression": curve_y}))
-		n2.push(Node("1", {"expression": vertical_res}))
+		n2.push(exp_input("0", curve_y))
+		n2.push(exp_input("1", vertical_res))
 		curve_v = exp_list.push(n2)
 
 		n3 = Node("AppendVector")
-		n3.push(Node("0", level))
-		n3.push(Node("1", {"expression": curve_v}))
+		n3.push(exp_input("0", level))
+		n3.push(exp_input("1", curve_v))
 		tex_coord = exp_list.push(n3)
 
 		texture_exp = exp_texture("datasmith_curves", "datasmith_curves")
@@ -768,10 +795,10 @@ def exp_color_ramp(from_node, exp_list):
 		texture = exp_texture_object("datasmith_curves", exp_list)
 
 		lookup = Node("FunctionCall", { "Function": op_custom_functions["COLOR_RAMP"]})
-		lookup.push(Node("0", level))
-		lookup.push(Node("1", {"expression": curve_idx } ))
-		lookup.push(Node("2", {"expression": vertical_res } ))
-		lookup.push(Node("3", {"expression": texture } ))
+		lookup.push(exp_input("0", level))
+		lookup.push(exp_input("1", curve_idx))
+		lookup.push(exp_input("2", vertical_res))
+		lookup.push(exp_input("3", texture))
 		result = exp_list.push(lookup)
 
 		return result
@@ -791,25 +818,25 @@ def exp_curvergb(from_node, exp_list):
 	texture = exp_texture_object("datasmith_curves", exp_list)
 
 	lookup = Node("FunctionCall", { "Function": op_custom_functions["CURVE_RGB"]})
-	lookup.push(Node("0", color))
-	lookup.push(Node("1", {"expression": curve_idx}))
-	lookup.push(Node("2", {"expression": vertical_res}))
-	lookup.push(Node("3", {"expression": texture}))
+	lookup.push(exp_input("0", color))
+	lookup.push(exp_input("1", curve_idx))
+	lookup.push(exp_input("2", vertical_res))
+	lookup.push(exp_input("3", texture))
 	blend_exp = exp_list.push(lookup)
 
 
 	blend = Node("LinearInterpolate")
-	blend.push(Node("0", color))
-	blend.push(Node("1", {"expression": blend_exp}))
-	blend.push(Node("2", factor))
+	blend.push(exp_input("0", color))
+	blend.push(exp_input("1", blend_exp))
+	blend.push(exp_input("2", factor))
 	result = exp_list.push(blend)
 
 	return result
 
 def exp_texture_object(name, exp_list):
 	n = Node("TextureObject")
-	n.push(Node("0", {
-		"name": "Texture",
+	n.push(Node("Input", {
+		"name": "0",
 		"type": "Texture",
 		"val": name,
 	}))
@@ -839,10 +866,10 @@ def exp_bump(node, exp_list):
 
 	image_object = exp_texture_object(name, exp_list)
 	bump_node = Node("FunctionCall", { "Function": op_custom_functions["NORMAL_FROM_HEIGHT"]})
-	bump_node.push(Node("0", {"expression": image_object}))
-	bump_node.push(Node("1", get_expression(node.inputs['Strength'], exp_list)))
-	bump_node.push(Node("2", get_expression(node.inputs['Distance'], exp_list)))
-	bump_node.push(Node("3", get_expression(from_node.inputs['Vector'], exp_list)))
+	bump_node.push(exp_input("0", image_object))
+	bump_node.push(exp_input("1", get_expression(node.inputs['Strength'], exp_list)))
+	bump_node.push(exp_input("2", get_expression(node.inputs['Distance'], exp_list)))
+	bump_node.push(exp_input("3", get_expression(from_node.inputs['Vector'], exp_list)))
 	exp = exp_list.push(bump_node)
 	return {"expression": exp}
 
@@ -901,9 +928,9 @@ def exp_attribute(socket, exp_list):
 	if socket.name == "Fac":
 		#TODO: check if we should do some colorimetric aware convertion to grayscale
 		n = Node("DotProduct")
-		n.push(Node("0", ret))
+		n.push(exp_input("0", ret))
 		exp_1 = exp_vector((0.333333, 0.333333, 0.333333), exp_list)
-		n.push(Node("1", {"expression": exp_1}))
+		n.push(exp_input("1", exp_1))
 		dot_exp = exp_list.push(n)
 		ret = {"expression": dot_exp}
 	return ret
@@ -918,7 +945,7 @@ def exp_vertex_color(socket, exp_list):
 def exp_fresnel(node, exp_list):
 	n = Node("FunctionCall", { "Function": op_custom_functions["FRESNEL"]})
 	exp_ior = get_expression(node.inputs['IOR'], exp_list)
-	n.push(Node("0", exp_ior))
+	n.push(exp_input("0", exp_ior))
 	return exp_list.push(n)
 
 
@@ -977,6 +1004,8 @@ def get_expression(field, exp_list, force_default=False):
 	return_exp = get_expression_inner(socket, exp_list)
 	expression_log_prefix = prev_prefix
 
+	reverse_expressions[socket] = return_exp
+
 	# if a color output is connected to a scalar input, average by using dot product
 	if field.type == 'VALUE':
 		other_output = field.links[0].from_socket
@@ -984,9 +1013,9 @@ def get_expression(field, exp_list, force_default=False):
 			#TODO: check if we should do some colorimetric aware convertion to grayscale
 			n = Node("DotProduct")
 			exp_0 = return_exp
-			n.push(Node("0", exp_0))
+			n.push(exp_input("0", exp_0))
 			exp_1 = exp_vector((0.333333, 0.333333, 0.333333), exp_list)
-			n.push(Node("1", {"expression": exp_1}))
+			n.push(exp_input("1", {"expression": exp_1}))
 			dot_exp = exp_list.push(n)
 			return_exp = {"expression": dot_exp}
 
@@ -1001,8 +1030,6 @@ def get_expression(field, exp_list, force_default=False):
 			}
 
 
-	socket = field.links[0].from_socket
-	reverse_expressions[socket] = return_exp
 
 	# return_exp can be null, we may need some clearer behavior on corner cases
 	return return_exp
@@ -1055,7 +1082,7 @@ def get_expression_inner(socket, exp_list):
 		if add_transmission:
 			n = Node("OneMinus")
 			exp_transmission = get_expression(node.inputs['Transmission'], exp_list)
-			n.push(Node("0", exp_transmission))
+			n.push(exp_input("0", exp_transmission))
 			exp_opacity = {"expression": exp_list.push(n)}
 			bsdf['Opacity'] = exp_opacity
 	if node.type == 'EEVEE_SPECULAR':
@@ -1150,8 +1177,8 @@ def get_expression_inner(socket, exp_list):
 
 	if node.type == 'EMISSION':
 		mult = Node("Multiply")
-		mult.push(Node("0", get_expression(node.inputs['Color'], exp_list)))
-		mult.push(Node("1", get_expression(node.inputs['Strength'], exp_list)))
+		mult.push(exp_input("0", get_expression(node.inputs['Color'], exp_list)))
+		mult.push(exp_input("1", get_expression(node.inputs['Strength'], exp_list)))
 		mult_exp = exp_list.push(mult)
 		return {
 			"EmissiveColor": {"expression": mult_exp}
@@ -1173,8 +1200,8 @@ def get_expression_inner(socket, exp_list):
 
 			if name in expressions:
 				n = Node("Add")
-				n.push(Node("0", expressions[name]))
-				n.push(Node("1", exp))
+				n.push(exp_input("0", expressions[name]))
+				n.push(exp_input("1", exp))
 				expressions[name] = {"expression":exp_list.push(n)}
 			else:
 				expressions[name] = exp
@@ -1196,9 +1223,9 @@ def get_expression_inner(socket, exp_list):
 		for name, exp in expressions1.items():
 			if name in expressions:
 				n = Node("LinearInterpolate")
-				n.push(Node("0", expressions[name]))
-				n.push(Node("1", exp))
-				n.push(Node("2", fac_expression))
+				n.push(exp_input("0", expressions[name]))
+				n.push(exp_input("1", exp))
+				n.push(exp_input("2", fac_expression))
 				expressions[name] = {"expression":exp_list.push(n)}
 			else:
 				expressions[name] = exp
@@ -1280,19 +1307,18 @@ def get_expression_inner(socket, exp_list):
 				# ensure that texture is exported
 				texture_type = get_context() or 'SRGB'
 				get_or_create_texture(name, image, texture_type)
-
 			texture_exp = exp_texture(name)
 			if tex_coord:
 				if node.projection == 'BOX':
 					proj = Node("FunctionCall", { "Function": "/DatasmithBlenderContent/MaterialFunctions/TexCoord_Box"})
-					proj.push(Node("0", tex_coord))
+					proj.push(exp_input("0", tex_coord))
 					mask_expression = { "expression": exp_list.push(proj) }
 					texture_exp.push(Node("Coordinates", mask_expression))
 				else:
 					if node.projection != 'FLAT':
 						log.error("node TEXTURE_COORDINATE has unhandled projection: %s" % node.projection)
 					mask = Node("ComponentMask")
-					mask.push(Node("0", tex_coord))
+					mask.push(exp_input("0", tex_coord))
 					mask_expression = { "expression": exp_list.push(mask) }
 					texture_exp.push(Node("Coordinates", mask_expression))
 
@@ -1374,8 +1400,8 @@ def get_expression_inner(socket, exp_list):
 	if node.type == 'VECT_MATH':
 		return exp_vect_math(node, exp_list)
 
-	# if node.type == 'SHADERTORGB':
-
+	if node.type == 'SHADERTORGB':
+		return exp_shader_to_rgb(socket, exp_list)
 	# Others:
 
 	# if node.type == 'SCRIPT':
@@ -1791,7 +1817,9 @@ def collect_object_custom_data(bl_obj, n, apply_modifiers, obj_mat, depsgraph, e
 
 			if umesh:
 				n.name = 'ActorMesh'
-				n.push(Node('mesh', {'name': umesh.name}))
+				mesh_name = umesh.name
+				log.error("collecting mesh: %s" % mesh_name)
+				n.push(Node('mesh', {'name': mesh_name}))
 
 				for idx, slot in enumerate(bl_obj.material_slots):
 					if slot.link == 'OBJECT':
@@ -2066,7 +2094,7 @@ def collect_object_metadata(obj_name, obj_type, obj):
 		datasmith_context["metadata"].append(metadata)
 
 def node_value(name, value):
-	return Node(name, {'value': '{:6f}'.format(value)})
+	return Node(name, {'value': '%f' % value })
 def f(value):
 	return '%f' % value
 
@@ -2231,7 +2259,7 @@ def save_texture(texture, basedir, folder_name, minimal_export = False, use_gamm
 
 	n = Node('Texture')
 	n['name'] = name
-	n['file'] = path.join(folder_name, safe_name)
+	n['file'] = path.join(folder_name, safe_name)#.replace("\\", "/")
 	n['rgbcurve'] = 0.0
 	n['srgb'] = "1" # this parameter is only read on 4.25 onwards
 
@@ -2266,6 +2294,7 @@ def calc_hash(image_path):
 meshes_per_original = {}
 
 # send instance.original to this function
+# if this returns none, it didn't convert to geometry
 def get_mesh_name(bl_obj_inst):
 	bl_obj = bl_obj_inst.original
 
@@ -2302,7 +2331,17 @@ def get_mesh_name(bl_obj_inst):
 	
 	mesh_data = meshes_per_original.get(bl_mesh_name)
 	if bl_mesh_name in meshes_per_original:
+		if meshes_per_original[bl_mesh_name] is None:
+			return None
 		return bl_mesh_name
+
+	# if we find that the mesh has no geometry, just pass null and store null
+	bl_mesh = bl_obj_inst.to_mesh()
+	has_geometry = bl_mesh and len(bl_mesh.polygons) > 0
+	if not has_geometry:
+		# we use null name as a way to mean no geometry
+		meshes_per_original[bl_mesh_name] = None
+		return None
 
 	log.info("creating mesh:%s" % bl_mesh_name)
 	
@@ -2310,12 +2349,13 @@ def get_mesh_name(bl_obj_inst):
 	mesh_data['name'] = bl_mesh_name
 
 		
-	bl_mesh = bl_obj_inst.to_mesh()
+
 	mesh_data['mesh'] = bl_mesh
 
 	meshes = datasmith_context["meshes"]
 	umesh = None
-	if bl_mesh and len(bl_mesh.polygons) > 0:
+
+	if bl_mesh:# and len(bl_mesh.polygons) > 0:
 		umesh = UDMesh(bl_mesh_name)
 		meshes.append(umesh)
 		fill_umesh(umesh, bl_mesh)
@@ -2330,9 +2370,10 @@ def get_mesh_name(bl_obj_inst):
 	if umesh:
 		mesh_data['umesh'] = umesh
 	return bl_mesh_name
-		
+
 def fill_obj_mesh(obj_dict, bl_obj):
 	mesh_name = get_mesh_name(bl_obj)
+	# mesh_name can be none, in that case we won't ever convert to actormesh
 	if mesh_name:
 		obj_dict['type'] = 'ActorMesh'
 		fields = obj_dict['fields']
@@ -2374,7 +2415,7 @@ def fill_obj_light(obj_dict, target):
 		fields.append('\t<InnerConeAngle value="%f"/>\n' % inner_cone_angle)
 		fields.append('\t<OuterConeAngle value="%f"/>\n' % outer_cone_angle)
 
-		spot_use_candelas = False # TODO: test this thoroughly
+		spot_use_candelas = True # TODO: test this thoroughly
 		if spot_use_candelas:
 			light_intensity_units = 'Candelas'
 			light_intensity = bl_light.energy * 0.08 # came up with this constant by brute force
@@ -2485,12 +2526,14 @@ def get_object_data(objects, _object, top_level_objs, object_name=None):
 		object_name = _object.name
 
 	object_name = sanitize_name(object_name)
+	log.info("getting obj %s" % object_name)
 	object_data = None
 	if not unique:
 		object_data = objects.get(object_name)
 	if not object_data:
 		object_data = create_object(_object)
 		object_data['name'] = object_name
+
 		if not unique:
 			objects[object_name] = object_data
 		parent = _object.parent
@@ -2553,20 +2596,21 @@ def collect_depsgraph(output, use_instanced_meshes):
 '''
 				parent_data = get_object_data(instance_groups, instance.parent, top_level_objs)
 				mesh_name = get_mesh_name(instance.instance_object) # ensure that mesh data has been collected
-				was_instanced = True
-				original_name = original.name
-				instance_lists = parent_data['instances']
-				instance_list = instance_lists.get(mesh_name)
-				if not instance_list:
-					instance_list = instance_lists[mesh_name] = []
+				if mesh_name:
+					was_instanced = True
+					original_name = original.name
+					instance_lists = parent_data['instances']
+					instance_list = instance_lists.get(mesh_name)
+					if not instance_list:
+						instance_list = instance_lists[mesh_name] = []
 
-				parent_matrix = instance.parent.matrix_world
-				instance_matrix = instance.matrix_world @ parent_matrix.inverted()
-				instance_matrix = parent_matrix.inverted() @ instance.matrix_world
-				instance_transform = collect_object_transform2(instance.object, instance_matrix)
-				instance_world_transform = collect_object_transform2(instance.object, instance.matrix_world)
-				
-				instance_list.append((instance_transform, instance_world_transform))
+					parent_matrix = instance.parent.matrix_world
+					instance_matrix = instance.matrix_world @ parent_matrix.inverted()
+					instance_matrix = parent_matrix.inverted() @ instance.matrix_world
+					instance_transform = collect_object_transform2(instance.object, instance_matrix)
+					instance_world_transform = collect_object_transform2(instance.object, instance.matrix_world)
+					
+					instance_list.append((instance_transform, instance_world_transform))
 
 		if not was_instanced:
 			obj = instance.object

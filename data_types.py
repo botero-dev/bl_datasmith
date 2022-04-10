@@ -72,6 +72,7 @@ def is_char_valid(in_char):
 	return False
 
 invalid_chars = [
+	" ", # ue4 doesn't like spaces in filenames, better just reject them everywhere
 	".", ",", "/", "?", "<", ">", ";", ":", "'", "\"", "~", "`", 
 	"[", "]", "{", "}", "\\", "|",
 	"!", "@", "#", "$", "%", "^", "&", "*", "(", ")", "=",
@@ -81,7 +82,7 @@ def sanitize_name(name):
 	output = name
 	for invalid_char in invalid_chars:
 		if invalid_char in name:
-			output = name.replace(invalid_char , "_")
+			output = output.replace(invalid_char , "_")
 	return output
 
 
