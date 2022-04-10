@@ -261,9 +261,10 @@ def exp_generic(name, inputs, exp_list, force_default=False):
 
 def exp_function_call(path, inputs, exp_list, force_default=False):
 	n = Node("FunctionCall", {"Function": path})
-	for idx, input in enumerate(inputs):
-		input_exp = get_expression(input, exp_list, force_default)
-		n.push(exp_input(idx, input_exp))
+	if inputs:
+		for idx, input in enumerate(inputs):
+			input_exp = get_expression(input, exp_list, force_default)
+			n.push(exp_input(idx, input_exp))
 	return { "expression": exp_list.push(n) }
 
 def exp_math(node, exp_list):
@@ -615,38 +616,12 @@ def exp_new_geometry(socket, exp_list):
 	# 	this would be cameraposition - worldposition
 	# if socket_name == "Parametric":
 	#	this appears to be per-triangle barycentric coordinates
-	# if socket_name == "Backfacing":
-	#	exactly what it says, I thought UE4 had this
-	if socket_name == "Pointiness":
-		exp = exp_scalar(0, exp_list)
-		return {"expression": exp}
-	# if socket_name == "Random Per Island":
-	log.error("Node NEW_GEOMETRY has unhanded socket:%s" % socket_name)
+	if socket_name == "Backfacing":
+		global material_hint_twosided
+		material_hint_twosided = True
 
-
-def exp_texture_coordinates(socket, exp_list):
-	socket_name = socket.name
-	if socket_name == "Position":
-		blend = Node("FunctionCall", { "Function": op_custom_functions["WORLD_POSITION"]})
-		n = exp_list.push(blend)
-		return { "expression": n }
-	if socket_name == "Normal":
-		blend = Node("PixelNormalWS")
-		n = exp_list.push(blend)
-		return { "expression": n }
-	if socket_name == "Tangent":
-		blend = Node("VertexTangentWS")
-		n = exp_list.push(blend)
-		return { "expression": n }
-	if socket_name == "True Normal":
-		blend = Node("VertexNormalWS")
-		n = exp_list.push(blend)
-		return { "expression": n }
-	# if socket_name == "Incoming":
-	# 	this would be cameraposition - worldposition
-	# if socket_name == "Parametric":
-	#	this appears to be per-triangle barycentric coordinates
-	# if socket_name == "Backfacing":
+		backfacing_path = "/DatasmithBlenderContent/MaterialFunctions/Backfacing"
+		return exp_function_call(backfacing_path, inputs=None, exp_list=exp_list)
 	#	exactly what it says, I thought UE4 had this
 	if socket_name == "Pointiness":
 		exp = exp_scalar(0, exp_list)
@@ -836,7 +811,7 @@ def exp_curvergb(from_node, exp_list):
 def exp_texture_object(name, exp_list):
 	n = Node("TextureObject")
 	n.push(Node("Input", {
-		"name": "0",
+		"name": "Texture",
 		"type": "Texture",
 		"val": name,
 	}))
@@ -1412,7 +1387,13 @@ def get_expression_inner(socket, exp_list):
 	return {"expression": exp}
 
 
+material_hint_twosided = False
+
 def pbr_nodetree_material(material):
+
+	global material_hint_twosided
+	material_hint_twosided = False
+
 	log.info("Collecting material: "+material.name)
 	n = Node("UEPbrMaterial")
 	n['name'] = sanitize_name(material.name)
@@ -1440,6 +1421,9 @@ def pbr_nodetree_material(material):
 	expressions = get_expression(surface_field, exp_list)
 	for key, value in expressions.items():
 		n.push(Node(key, value))
+
+	if material_hint_twosided:
+		n.push('\n\t\t<TwoSided enabled="%s"/>' % material_hint_twosided)
 
 	# apparently this happens automatically, we may want to
 	# choose if we export with masked blend mode
@@ -2415,7 +2399,7 @@ def fill_obj_light(obj_dict, target):
 		fields.append('\t<InnerConeAngle value="%f"/>\n' % inner_cone_angle)
 		fields.append('\t<OuterConeAngle value="%f"/>\n' % outer_cone_angle)
 
-		spot_use_candelas = True # TODO: test this thoroughly
+		spot_use_candelas = False # TODO: test this thoroughly
 		if spot_use_candelas:
 			light_intensity_units = 'Candelas'
 			light_intensity = bl_light.energy * 0.08 # came up with this constant by brute force
@@ -2463,14 +2447,15 @@ def fill_obj_unknown(obj_dict, target):
 def fill_obj_camera(obj_dict, target):
 	obj_dict['type'] = "Camera"
 	
-	# TODO
-	# look_at_actor = sanitize_name(bl_cam.dof.focus_object.name)
-
 	fields = obj_dict["fields"]
 	bl_cam = target.data
 
 	use_dof = "1" if bl_cam.dof.use_dof else "0"
 	fields.append('\t<DepthOfField enabled="%s"/>\n' % use_dof)
+	dof_target = bl_cam.dof.focus_object
+	if dof_target:
+		fields.append('\t<LookAt Actor="%s"/>\n' % sanitize_name(dof_target.name))
+
 	fields.append('\t<SensorWidth value="%f"/>\n' % bl_cam.sensor_width)
 
 	# blender doesn't have per-camera aspect ratio
@@ -2482,10 +2467,6 @@ def fill_obj_camera(obj_dict, target):
 	fields.append('\t<FStop value="%f"/>\n' % bl_cam.dof.aperture_fstop)
 	fields.append('\t<FocalLength value="%f"/>\n' % bl_cam.lens)
 	
-	# possible micro optim: compare with:
-	# 	fields.append('\t<%s value="%f" />\n' % ("FocalLength", bl_cam.lens))
-
-
 
 obj_fill_funcs = {
 	'CAMERA': fill_obj_camera,
