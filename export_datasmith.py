@@ -2496,8 +2496,10 @@ def collect_object_transform2(bl_obj, instance_mat = None):
 	result = transform_to_xml(obj_mat)
 	return result
 
-
-def get_object_data(objects, _object, top_level_objs, object_name=None):
+# ensures that `objects` has an entry for `_object` and ensures that
+# the parent is also already there, and has `_object` as a children
+# returns the base actor structure, as added in the `objects` list
+def get_object_data(objects, _object, top_level_objs, object_name=None, instance_parent=None):
 	
 	assert _object
 	unique = False
@@ -2517,7 +2519,11 @@ def get_object_data(objects, _object, top_level_objs, object_name=None):
 
 		if not unique:
 			objects[object_name] = object_data
+
 		parent = _object.parent
+		if instance_parent:
+			parent = instance_parent
+
 		if parent:
 			parent_data = get_object_data(objects, parent, top_level_objs)
 			
@@ -2566,7 +2572,8 @@ def collect_depsgraph(output, use_instanced_meshes):
 			original = instance.instance_object.original
 
 			convertible_to_mesh = ('MESH', 'CURVE')
-			if original.type in convertible_to_mesh:
+			original_type = original.type
+			if original_type in convertible_to_mesh:
 				'''
 				if instance.parent == last_parent:
 					parent_data = last_parent_data
@@ -2605,16 +2612,16 @@ def collect_depsgraph(output, use_instanced_meshes):
 			obj = instance.object
 			assert obj
 			name = None
-			
+
+			inst_parent = None
 			if instance.is_instance:
 				id_list = []
 				for id in instance.persistent_id:
 					if id != 0x7fffffff:
 						id_list.append("_%i" % id)
 					else:
-						id_list.append('x')
+						id_list.append('_')
 
-				
 				instance_id = "".join(
 					"_%i" % id
 					for id in instance.persistent_id
@@ -2623,14 +2630,15 @@ def collect_depsgraph(output, use_instanced_meshes):
 				instance_id = "".join(id_list)
 				inst = instance.instance_object
 				parent_chain = []
-				parent = inst.parent
+				inst_parent = instance.parent
+				parent = inst_parent
 				while parent:
 					parent_chain.append(parent.name)
 					parent = parent.parent
 				parents_name = "_".join(parent_chain)
 				name = '%s_%s_%s' % (parents_name, inst.name, instance_id)
 
-			object_data = get_object_data(instance_groups, obj, top_level_objs, object_name=name)
+			object_data = get_object_data(instance_groups, obj, top_level_objs, object_name=name, instance_parent=inst_parent)
 
 			if instance.is_instance:
 				object_data['transform'] = transform
