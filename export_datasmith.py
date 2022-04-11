@@ -2582,8 +2582,16 @@ def collect_depsgraph(output, use_instanced_meshes):
 					original_name = original.name
 					instance_lists = parent_data['instances']
 					instance_list = instance_lists.get(mesh_name)
+					instance_material_slots = None
 					if not instance_list:
 						instance_list = instance_lists[mesh_name] = []
+						instance_material_slots	= []
+						bl_obj = instance.instance_object
+						for idx, slot in enumerate(bl_obj.material_slots):
+							if slot.link == 'OBJECT':
+								safe_name = sanitize_name(slot.material.name)
+								instance_material_slots.append('\t\t\t<material id="%i" name="%s"/>\n' % (idx, safe_name))
+
 
 					parent_matrix = instance.parent.matrix_world
 					instance_matrix = instance.matrix_world @ parent_matrix.inverted()
@@ -2591,7 +2599,7 @@ def collect_depsgraph(output, use_instanced_meshes):
 					instance_transform = collect_object_transform2(instance.object, instance_matrix)
 					instance_world_transform = collect_object_transform2(instance.object, instance.matrix_world)
 					
-					instance_list.append((instance_transform, instance_world_transform))
+					instance_list.append((instance_transform, instance_world_transform, instance_material_slots))
 
 		if not was_instanced:
 			obj = instance.object
@@ -2703,7 +2711,15 @@ def render_tree(obj_dict, output, indent):
 				output.append(indent)
 				output.append('\t\t')
 
-				output.append(instances[0][1])
+				transform = instances[0][1]
+				output.append(transform)
+
+				instance_materials = instances[0][2]
+				if instance_materials:
+					for mat in instance_materials:
+						output.append(indent)
+						output.append(mat)
+
 
 				output.append(indent)
 				output.append('\t\t</ActorMesh>\n')
