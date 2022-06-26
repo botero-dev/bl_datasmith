@@ -2615,28 +2615,8 @@ def collect_depsgraph(output, use_instanced_meshes):
 
 			inst_parent = None
 			if instance.is_instance:
-				id_list = []
-				for id in instance.persistent_id:
-					if id != 0x7fffffff:
-						id_list.append("_%i" % id)
-					else:
-						id_list.append('_')
-
-				instance_id = "".join(
-					"_%i" % id
-					for id in instance.persistent_id
-					if id != 0x7fffffff
-				)
-				instance_id = "".join(id_list)
-				inst = instance.instance_object
-				parent_chain = []
 				inst_parent = instance.parent
-				parent = inst_parent
-				while parent:
-					parent_chain.append(parent.name)
-					parent = parent.parent
-				parents_name = "_".join(parent_chain)
-				name = '%s_%s_%s' % (parents_name, inst.name, instance_id)
+				name = make_instance_name(instance)
 
 			object_data = get_object_data(instance_groups, obj, top_level_objs, object_name=name, instance_parent=inst_parent)
 
@@ -2653,6 +2633,30 @@ def collect_depsgraph(output, use_instanced_meshes):
 		
 	result = "".join(output)
 	return result
+
+def make_instance_name(instance):
+	id_list = []
+	for id in instance.persistent_id:
+		if id != 0x7fffffff:
+			id_list.append("_%i" % id)
+		else:
+			id_list.append('_')
+
+	instance_id = "".join(
+		"_%i" % id
+		for id in instance.persistent_id
+		if id != 0x7fffffff
+	)
+	instance_id = "".join(id_list)
+	inst = instance.instance_object
+	parent_chain = []
+	parent = instance.parent
+	while parent:
+		parent_chain.append(parent.name)
+		parent = parent.parent
+	parents_name = "_".join(parent_chain)
+	name = '%s_%s_%s' % (parents_name, inst.name, instance_id)
+	return name
 
 
 def render_tree(obj_dict, output, indent):
@@ -2768,7 +2772,24 @@ def render_tree(obj_dict, output, indent):
 	output.append(">\n")
 
 
-def collect_anims(context, new_iterator: bool):
+def get_instance_local_matrix(instance):
+	instance_matrix = instance.matrix_world
+
+	# first try for instanced objects parent (instancer object) 
+	parent = instance.parent
+
+	# if not found, try for hierarchy parent
+	if not parent:
+		parent = instance.object.parent 
+
+	if parent:
+		parent_matrix = parent.matrix_world
+		instance_matrix = parent_matrix.inverted() @ instance.matrix_world
+
+	instance_matrix = matrix_datasmith @ instance_matrix @ matrix_datasmith.inverted()
+	return instance_matrix
+
+def collect_anims(context, new_iterator: bool, use_instanced_meshes: bool):
 	anims = []
 	anims_strings = []
 	if new_iterator:
@@ -2776,14 +2797,18 @@ def collect_anims(context, new_iterator: bool):
 		anim_objs = {}
 		d = bpy.context.evaluated_depsgraph_get()
 		for instance in d.object_instances:
+			base_name = instance.object.name
 			if instance.is_instance:
-				# we don't write instanced objects data for now.
-				continue
-			object_name = sanitize_name(instance.object.name)
+				if use_instanced_meshes:
+					# instanced meshes can't be animated
+					continue
+				base_name = make_instance_name(instance)
+			object_name = sanitize_name(base_name)
+			object_matrix = get_instance_local_matrix(instance)
 			anim_data = {
 				"name": object_name,
 				"animates": False,
-				"matrix": instance.matrix_world.copy(),
+				"matrix": object_matrix,
 			}
 			anim_objs[object_name] = anim_data
 	
@@ -2801,23 +2826,17 @@ def collect_anims(context, new_iterator: bool):
 			context.scene.frame_set(frame_idx)
 			d = bpy.context.evaluated_depsgraph_get()
 			for instance in d.object_instances:
+				base_name = instance.object.name
 				if instance.is_instance:
-					# we don't write instanced objects data for now.
-					continue
-				object_name = sanitize_name(instance.object.name)
+					if use_instanced_meshes:
+						# instanced meshes can't be animated
+						continue
+					base_name = make_instance_name(instance)
+				object_name = sanitize_name(base_name)
 				anim_data = anim_objs[object_name]
 				animates = anim_data["animates"]
 
-				instance_matrix = instance.matrix_world
-
-				# don't know why, but here this is the code we need, but in another place
-				# we read from instance.parent instead. maybe because instance.parent is
-				# only useful when we use instance.is_instance?
-				parent = instance.object.parent 
-
-				if parent:
-					parent_matrix = parent.matrix_world
-					instance_matrix = parent_matrix.inverted() @ instance.matrix_world
+				instance_matrix = get_instance_local_matrix(instance)
 
 				if not animates:
 					# TODO: maybe don't use != here, instead use some kind of threshold to avoid 
@@ -3037,7 +3056,7 @@ def collect_and_save(context, args, save_path):
 
 	anims = []
 	if export_animations:
-		anims = collect_anims(context, not USE_OLD_OBJECT_ITERATOR)
+		anims = collect_anims(context, not USE_OLD_OBJECT_ITERATOR, use_instanced_meshes)
 
 
 	environment = collect_environment(context.scene.world)
