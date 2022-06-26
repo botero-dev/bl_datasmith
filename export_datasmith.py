@@ -2601,7 +2601,7 @@ def collect_depsgraph(output, use_instanced_meshes):
 
 
 					parent_matrix = instance.parent.matrix_world
-					instance_matrix = instance.matrix_world @ parent_matrix.inverted()
+					# instance_matrix = instance.matrix_world @ parent_matrix.inverted()
 					instance_matrix = parent_matrix.inverted() @ instance.matrix_world
 					instance_transform = collect_object_transform2(instance.object, instance_matrix)
 					instance_world_transform = collect_object_transform2(instance.object, instance.matrix_world)
@@ -2797,6 +2797,7 @@ def collect_anims(context, new_iterator: bool):
 		num_frames = frame_end - frame_start + 1
 		
 		for frame_idx in range(frame_start, frame_end+1):
+			log.info("collecting frame %d" % frame_idx)
 			context.scene.frame_set(frame_idx)
 			d = bpy.context.evaluated_depsgraph_get()
 			for instance in d.object_instances:
@@ -2806,14 +2807,28 @@ def collect_anims(context, new_iterator: bool):
 				object_name = sanitize_name(instance.object.name)
 				anim_data = anim_objs[object_name]
 				animates = anim_data["animates"]
+
+				instance_matrix = instance.matrix_world
+
+				# don't know why, but here this is the code we need, but in another place
+				# we read from instance.parent instead. maybe because instance.parent is
+				# only useful when we use instance.is_instance?
+				parent = instance.object.parent 
+
+				if parent:
+					parent_matrix = parent.matrix_world
+					instance_matrix = parent_matrix.inverted() @ instance.matrix_world
+
 				if not animates:
-					if anim_data["matrix"] != instance.matrix_world:
+					# TODO: maybe don't use != here, instead use some kind of threshold to avoid 
+					# a false positive from float jitter
+					if anim_data["matrix"] != instance_matrix:
 						animates = anim_data["animates"] = True
 						anim_data["frames"] = []
 
 				if animates:
 					frames = anim_data["frames"]
-					frames.append(instance.matrix_world.copy())
+					frames.append(instance_matrix.copy())
 
 		# write phase:
 		to_deg = 360 / math.tau
