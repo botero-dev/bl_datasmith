@@ -2280,6 +2280,7 @@ meshes_per_original = {}
 # send instance.original to this function
 # if this returns none, it didn't convert to geometry
 def get_mesh_name(bl_obj_inst):
+
 	bl_obj = bl_obj_inst.original
 
 	bl_mesh_name = bl_obj.data.name
@@ -2312,8 +2313,10 @@ def get_mesh_name(bl_obj_inst):
 		bl_mesh_name = prefix + bl_mesh_name
 
 	bl_mesh_name = sanitize_name(bl_mesh_name)
-	
-	mesh_data = meshes_per_original.get(bl_mesh_name)
+
+	# if the mesh has been processed already, return the name
+	# if the mesh was processed, but its result was none, is because
+	# it didn't have geometry, so we convert that to simple actor
 	if bl_mesh_name in meshes_per_original:
 		if meshes_per_original[bl_mesh_name] is None:
 			return None
