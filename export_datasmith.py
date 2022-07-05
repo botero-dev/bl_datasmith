@@ -664,7 +664,7 @@ def exp_object_info(socket, exp_list):
 	elif field == "Random":
 		exp = exp_list.push(Node("PerInstanceRandom"))
 	elif field == "Object Index":
-		log.warning("Node Object Info>Object Index translated to random as it is used to randomize too")
+		log.warn("Node Object Info>Object Index translated to random as it is used to randomize too")
 		exp = exp_list.push(Node("PerInstanceRandom"))
 	else:
 		log.error("Can't write Material node 'Object Info' field:%s" % field)
@@ -969,7 +969,7 @@ def get_expression(field, exp_list, force_default=False):
 				"Roughness": {"expression": exp_scalar(1.0, exp_list)},
 			}
 			return bsdf
-		log.warn("field has no links, and no default value " + str(field))
+		log.warn("Node %s (%s) field %s (%s) has no links, and no default value." % (node.name, node.type, field.name, field.type))
 		return None
 
 	prev_prefix = expression_log_prefix
@@ -2335,8 +2335,6 @@ def get_mesh_name(bl_obj_inst):
 	mesh_data = meshes_per_original[bl_mesh_name] = {}
 	mesh_data['name'] = bl_mesh_name
 
-		
-
 	mesh_data['mesh'] = bl_mesh
 
 	meshes = datasmith_context["meshes"]
@@ -2444,14 +2442,13 @@ def fill_obj_light(obj_dict, target):
 	fields.append('\t<Color usetemp="0" R="%f" G="%f" B="%f"/>\n' % light_color[:])
 	
 
-def fill_obj_unknown(obj_dict, target):
-	pass
 
 def fill_obj_camera(obj_dict, target):
 	obj_dict['type'] = "Camera"
 	
 	fields = obj_dict["fields"]
 	bl_cam = target.data
+
 
 	use_dof = "1" if bl_cam.dof.use_dof else "0"
 	fields.append('\t<DepthOfField enabled="%s"/>\n' % use_dof)
@@ -2469,13 +2466,74 @@ def fill_obj_camera(obj_dict, target):
 	fields.append('\t<FocusDistance value="%f"/>\n' % focus_distance_cm) # to centimeters
 	fields.append('\t<FStop value="%f"/>\n' % bl_cam.dof.aperture_fstop)
 	fields.append('\t<FocalLength value="%f"/>\n' % bl_cam.lens)
-	
+
+def fill_obj_lightprobe(obj_dict, target):
+	# TODO: LIGHT PROBE
+	obj_dict['type'] = "CustomActor"
+	bl_probe = target.data
+
+	fields = obj_dict['fields']
+	attribs = obj_dict['attrib']
+
+	probe_type = bl_probe.type
+	if probe_type == 'PLANAR':
+		attribs.append(' PathName="/DatasmithBlenderContent/Blueprints/BP_BlenderPlanarReflection"')
+
+	elif probe_type == 'CUBEMAP':
+		## we could also try using min/max if it makes a difference
+		_, _, obj_scale = target.matrix_world.decompose() # NOCHECKIN fix this
+		avg_scale = (obj_scale.x + obj_scale.y + obj_scale.z) * 0.333333
+
+		if bl_probe.influence_type == 'BOX':
+			attribs.append(' PathName="/DatasmithBlenderContent/Blueprints/BP_BlenderBoxReflection"')
+
+			falloff = bl_probe.falloff # this value is 0..1
+			transition_distance = falloff * avg_scale
+			fields.append('\t<KeyValueProperty name="TransitionDistance" type="Float" val="%f"/>\n' % transition_distance)
+
+		elif bl_probe.influence_type == 'ELIPSOID':
+			attribs.append(' PathName="/DatasmithBlenderContent/Blueprints/BP_BlenderSphereReflection"')
+
+			probe_radius = bl_probe.influence_distance * 100 * avg_scale
+			fields.append('\t<KeyValueProperty name="Radius" type="Float" val="%f"/>\n' % probe_radius)
+
+		else:
+			log.error("invalid light_probe.influence_type")
+
+	elif probe_type == 'GRID':
+		# for now we just export to custom object, but it doesn't affect the render on
+		# the unreal side. would be cool if it made a difference by setting volumetric importance volume
+		attribs.append(' PathName="/DatasmithBlenderContent/Blueprints/BP_BlenderGridProbe"')
+
+		# blender influence_distance is outwards, maybe we should grow the object to match?
+		# outward_influence would be 1.0 + influence_distance / size maybe?
+		# obj_mat = obj_mat @ Matrix.Scale(outward_influence, 4)
+
+	else:
+		log.error("unhandled light probe type %s" % bl_probe.type)
+
+
+
+def fill_obj_empty(obj_dict, target):
+	pass
+
+def fill_obj_unknown(obj_dict, target):
+	log.error("Invalid object type: %s" % target.type)
+
+def fill_obj_unsupported(obj_dict, target):
+	log.warn("Unsupported object type: %s" % target.type)
 
 obj_fill_funcs = {
-	'CAMERA': fill_obj_camera,
-	'MESH':  fill_obj_mesh,
-	'CURVE': fill_obj_mesh,
-	'LIGHT': fill_obj_light,
+	'EMPTY':       fill_obj_empty,
+	'CAMERA':      fill_obj_camera,
+	'MESH':        fill_obj_mesh,
+	'CURVE':       fill_obj_mesh,
+	'FONT':        fill_obj_mesh,
+	'LIGHT':       fill_obj_light,
+	'LIGHT_PROBE': fill_obj_lightprobe,
+	'ARMATURE':    fill_obj_unsupported,
+	'LATTICE':     fill_obj_unsupported,
+	'GPENCIL':     fill_obj_unsupported,
 }
 
 
@@ -2575,9 +2633,13 @@ def collect_depsgraph(output, use_instanced_meshes):
 			original = instance.instance_object.original
 
 			convertible_to_mesh = ('MESH', 'CURVE')
-			original_type = original.type
-			if original_type in convertible_to_mesh:
-				'''
+			if original.type in convertible_to_mesh:
+				
+				mesh_name = get_mesh_name(instance.instance_object) # ensure that mesh data has been collected
+				if mesh_name:
+					was_instanced = True
+					original_name = original.name
+					''' # maybe optimization to avoid calling get_object_data that much
 				if instance.parent == last_parent:
 					parent_data = last_parent_data
 				else:
@@ -2585,11 +2647,7 @@ def collect_depsgraph(output, use_instanced_meshes):
 					last_parent_data = parent_data
 					last_parent = instance.parent
 '''
-				parent_data = get_object_data(instance_groups, instance.parent, top_level_objs)
-				mesh_name = get_mesh_name(instance.instance_object) # ensure that mesh data has been collected
-				if mesh_name:
-					was_instanced = True
-					original_name = original.name
+					parent_data = get_object_data(instance_groups, instance.parent, top_level_objs)
 					instance_lists = parent_data['instances']
 					instance_list = instance_lists.get(mesh_name)
 					instance_material_slots = None
