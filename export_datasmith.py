@@ -937,7 +937,7 @@ def get_context():
 
 
 expression_log_prefix = ""
-def get_expression(field, exp_list, force_default=False):
+def get_expression(field, exp_list, force_default=False, skip_default_warn=False):
 	# this may return none for fields without default value
 	# most of the time blender doesn't have default value for vector
 	# node inputs, but it does for scalars and colors
@@ -969,7 +969,9 @@ def get_expression(field, exp_list, force_default=False):
 				"Roughness": {"expression": exp_scalar(1.0, exp_list)},
 			}
 			return bsdf
-		log.warn("Node %s (%s) field %s (%s) has no links, and no default value." % (node.name, node.type, field.name, field.type))
+
+		if not skip_default_warn:
+			log.warn("Node %s (%s) field %s (%s) has no links, and no default value." % (node.name, node.type, field.name, field.type))
 		return None
 
 	prev_prefix = expression_log_prefix
@@ -1272,7 +1274,10 @@ def get_expression_inner(socket, exp_list):
 				return { "expression": exp_scalar(0, exp_list) }
 
 
-			tex_coord = get_expression(node.inputs['Vector'], exp_list)
+			# we skip warnings for this get_expression call because it is very common to be disconnected
+			# in that case, we export it as disconnected to unreal too, which uses the default UV channel
+			# by default.
+			tex_coord = get_expression(node.inputs['Vector'], exp_list, skip_default_warn=True)
 
 
 			name = ""
