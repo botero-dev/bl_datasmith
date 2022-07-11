@@ -48,9 +48,9 @@ class ExportDatasmith(bpy.types.Operator, ExportHelper):
 			description="Exports only the selected objects",
 			default=False,
 		)
-	export_animations: BoolProperty(
-			name="Export animations",
-			description="Export object animations (transforms only)",
+	use_instanced_meshes: BoolProperty(
+			name="Use instanced meshes",
+			description="Exports instancing objects and particles as UE instanced meshes. Useful for foliage",
 			default=True,
 		)
 	apply_modifiers: BoolProperty(
@@ -59,10 +59,28 @@ class ExportDatasmith(bpy.types.Operator, ExportHelper):
 				"(This may break mesh instancing)",
 			default=True,
 		)
-	minimal_export: BoolProperty(
-			name="Skip meshes and textures",
-			description="Allows for faster exporting, useful if you only changed "
+	export_animations: BoolProperty(
+			name="Export animations",
+			description="Export object animations (transforms only)",
+			default=True,
+		)
+	export_metadata: BoolProperty(
+			name="Write metadata",
+			description="(maybe broken) Writes custom properties of objects and meshes as metadata. "
+				"It may be useful to disable this when using certain addons",
+			default=False,
+		)
+	skip_textures: BoolProperty(
+			name="Skip writing textures",
+			description="(maybe broken) Don't write textures when exporting the scene, "
+				"allows for faster exporting, useful if you only changed "
 				"transforms or shaders",
+			default=False,
+		)
+	compatibility_mode: BoolProperty(
+			name="Compatibility mode",
+			description="Enable this if you don't have the UE4 plugin, "
+				"Uses some nodes that UE4 has builtin, but at a reduced quality",
 			default=False,
 		)
 	use_gamma_hack: BoolProperty(
@@ -70,40 +88,28 @@ class ExportDatasmith(bpy.types.Operator, ExportHelper):
 			description="Flags sRGB texture to use gamma as sRGB is not supported in old versions",
 			default=False,
 		)
-	compatibility_mode: BoolProperty(
-			name="Compatibility mode",
-			description="Enable this if you don't have the UE4 plugin, "
-				"Improves material nodes support, but at a reduced quality",
+	use_old_iterator: BoolProperty(
+		name="Use old iterator",
+		description="In case you want to use the old exporter, all features should "
+				"be already in the new exporter. to be removed",
 			default=False,
-		)
-	write_metadata: BoolProperty(
-			name="Write metadata",
-			description="Writes custom properties of objects and meshes as metadata. "
-				"It may be useful to disable this when using certain addons",
-			default=True,
 		)
 	use_logging: BoolProperty(
 			name="Enable logging",
-			description="Enable logging to Window > System console",
+			description="Enable logging to Window > System console and log file",
 			default=False,
 		)
 	use_profiling: BoolProperty(
 			name="Enable profiling",
-			description="For development only, writes a python profile 'datasmith.prof'",
+			description="For development only, generates python profiling data",
 			default=False,
 		)
-	use_instanced_meshes: BoolProperty(
-			name="Use instanced meshes",
-			description="Exports instancing objects and particles as UE instanced meshes. Useful for foliage",
+	use_telemetry: BoolProperty(
+			name="Enable telemetry",
+			description="Sends export result data to the devs to gather product defects",
 			default=True,
 		)
-	use_old_iterator: BoolProperty(
-		name="Use old iterator",
-		description="In case you want to use the old exporter that was slower. "
-			"This is incompatible with instanced meshes",
-			default=False,
-		)
-
+	
 	def execute(self, context):
 		keywords = self.as_keywords(ignore=("filter_glob",))
 		from . import export_datasmith

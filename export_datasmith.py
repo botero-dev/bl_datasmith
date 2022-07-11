@@ -2211,7 +2211,7 @@ TEXTURE_MODE_OTHER = "5"
 TEXTURE_MODE_BUMP = "6" # this converts textures to normal maps automatically
 
 # saves image, and generates node with image description to add to export
-def save_texture(texture, basedir, folder_name, minimal_export = False, use_gamma_hack=False):
+def save_texture(texture, basedir, folder_name, skip_textures = False, use_gamma_hack=False):
 	name, image, img_type = texture
 
 	log.info("writing texture:"+name)
@@ -2228,7 +2228,7 @@ def save_texture(texture, basedir, folder_name, minimal_export = False, use_gamm
 
 	safe_name = sanitize_name(name) + ext
 	image_path = path.join(basedir, folder_name, safe_name)
-	skip_image = minimal_export and not path.exists(image_path)
+	skip_image = skip_textures and not path.exists(image_path)
 
 	# fix for invalid images, like one in mr_elephant sample.
 	valid_image = (image.channels != 0)
@@ -3073,6 +3073,7 @@ datasmith_context = None
 def collect_and_save(context, args, save_path):
 
 	start_time = time.monotonic()
+	summary = {}
 
 	global datasmith_context
 	datasmith_context = {
@@ -3093,15 +3094,15 @@ def collect_and_save(context, args, save_path):
 
 	selected_only = args["export_selected"]
 	apply_modifiers = args["apply_modifiers"]
-	minimal_export = args["minimal_export"]
-	write_metadata = args["write_metadata"]
+	skip_textures = args["skip_textures"]
+	export_metadata = args["export_metadata"]
 	export_animations = args["export_animations"]
-	USE_OLD_OBJECT_ITERATOR = args["use_old_iterator"]
+	use_old_iterator = args["use_old_iterator"]
 	use_instanced_meshes = args["use_instanced_meshes"]
 
 	objects = []
 	obj_output = ""
-	if USE_OLD_OBJECT_ITERATOR:
+	if use_old_iterator:
 		datasmith_context['depsgraph'] = context.evaluated_depsgraph_get()
 		root_objects = [obj for obj in all_objects if obj.parent is None]
 		for obj in root_objects:
@@ -3110,11 +3111,11 @@ def collect_and_save(context, args, save_path):
 				selected_only=selected_only,
 				apply_modifiers=apply_modifiers,
 				export_animations=export_animations,
-				export_metadata=write_metadata,
+				export_metadata=export_metadata,
 			)
 			if uobj:
 				objects.append(uobj)
-	else: # if not USE_OLD_OBJECT_ITERATOR:
+	else: # if not use_old_iterator:
 		# with the depsgraph iterator, we don't start with root objects and then find children.
 		# with the new object iterator, we read the depsgraph evaluated object array
 		log.info("USE NEW OBJECT ITERATOR")
@@ -3122,7 +3123,7 @@ def collect_and_save(context, args, save_path):
 
 	anims = []
 	if export_animations:
-		anims = collect_anims(context, not USE_OLD_OBJECT_ITERATOR, use_instanced_meshes)
+		anims = collect_anims(context, not use_old_iterator, use_instanced_meshes)
 
 
 	environment = collect_environment(context.scene.world)
@@ -3173,18 +3174,24 @@ def collect_and_save(context, args, save_path):
 
 
 	log.info("writing meshes")
+	num_meshes = 0
 	for mesh in datasmith_context["meshes"]:
 		mesh.save(basedir, folder_name)
-
+		num_meshes += 1
+	summary["Num meshes"] = num_meshes
 
 
 	log.info("writing textures")
 
 	tex_nodes = []
 	use_gamma_hack = args["use_gamma_hack"]
+	num_textures = 0
 	for tex in datasmith_context["textures"]:
-		tex_node = save_texture(tex, basedir, folder_name, minimal_export, use_gamma_hack)
+		tex_node = save_texture(tex, basedir, folder_name, skip_textures, use_gamma_hack)
 		tex_nodes.append(tex_node)
+		num_textures += 1
+
+	summary["Num textures"] = num_textures
 
 	log.info("building XML tree")
 
@@ -3233,6 +3240,11 @@ def collect_and_save(context, args, save_path):
 		f.write(result)
 	log.info("export finished")
 
+	summary["Time"] = total_time
+	summary["Size"] = len(result)
+
+
+	return summary
 
 
 def save(context, kwargs):
@@ -3240,7 +3252,11 @@ def save(context, kwargs):
 	handler = None
 	use_logging = bool(kwargs["use_logging"])
 	use_profiling = bool(kwargs["use_profiling"])
+	use_telemetry = bool(kwargs["use_telemetry"])
 	filepath = kwargs["filepath"]
+
+
+	summary = {}
 
 	if use_logging:
 		log_path = filepath + ".log"
@@ -3265,7 +3281,7 @@ def save(context, kwargs):
 			pr = cProfile.Profile()
 			pr.enable()
 		
-		collect_and_save(context, kwargs, basepath)
+		summary = collect_and_save(context, kwargs, basepath)
 
 		if use_profiling:
 			pr.disable()
@@ -3287,5 +3303,42 @@ def save(context, kwargs):
 			handler.close()
 			log.removeHandler(handler)
 
+	if use_telemetry:
+		print("sending telemetry data")
+
+		summary_arr = []
+
+		for key in summary:
+			summary_arr.append("%s: %s\n" % (key, summary[key]))
+		summary_txt = "".join(summary_arr)
+		import time
+		time_ms = time.time_ns() // 1000
+
+
+		BF_TELEMETRY_HOST = "http://telemetry.botero.tech:8080/bf_telemetry.lua"
+		telemetry_data = {
+			"summary": summary_txt,
+			"export_time": str(time_ms),
+			"status": 'SUCCESS',
+			"log": 'placeholder log',
+
+			"export_selected": kwargs["export_selected"],
+			"use_instanced_meshes": kwargs["use_instanced_meshes"],
+			"apply_modifiers": kwargs["apply_modifiers"],
+
+			"export_animations": kwargs["export_animations"],
+			"export_metadata": kwargs["export_metadata"],
+			"skip_textures": kwargs["skip_textures"],
+
+			"compatibility_mode": kwargs["compatibility_mode"],
+			"use_gamma_hack": kwargs["use_gamma_hack"],
+			"use_old_iterator": kwargs["use_old_iterator"],
+			
+			"use_logging": kwargs["use_logging"],
+			"use_profiling": kwargs["use_profiling"],
+		}
+
+		import requests
+		requests.post(BF_TELEMETRY_HOST, data=telemetry_data)
 	return {'FINISHED'}
 
