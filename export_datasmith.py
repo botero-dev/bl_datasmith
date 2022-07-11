@@ -1,4 +1,5 @@
-# Copyright Andrés Botero 2019
+# Datasmith exporter for Blender
+# Copyright 2018-2022 Andrés Botero
 
 import bpy
 import idprop

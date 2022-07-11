@@ -85,3 +85,5 @@ I want to see what you make and I am open to any feedback you have.
 
 [join_discord]: https://discord.gg/NJt5ADJ
 
+
+Copyright 2018-2022 Andrés Botero
