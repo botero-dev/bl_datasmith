@@ -2,6 +2,20 @@
 All notable changes to this project will be documented in this file.
 Features marked with `*` require the UE4 plugin to work.
 
+
+## [2.0] 2022-08-04
+* A lot has happened since last release!
+* Refactored the export loop, to use the result of the evaluated depsgraph from Blender.
+* Improved modifier behaviour.
+* Added support for instanced geometry, this results in improvements in:
+  - Instanced geometry also can have modifiers applied.
+  - Instanced geometry uses HISM actors in UE4.
+  - Instanced geometry can be exported as individual actors, allowing the export of animated particle systems.
+* Improved handling of the naming of things when exporting.
+* Export speed improvements.
+* Added telemetry
+
+
 ## [Unreleased]
 ### Fixed
 * Export metadata is now a flag, off by default, to help in case other addons store info there.
