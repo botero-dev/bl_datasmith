@@ -3315,13 +3315,16 @@ def save(context, kwargs):
 		import time
 		time_ms = time.time_ns() // 1000
 
+		from . import bl_info
+		version_string = "%s.%s.%s" % bl_info["version"]
+		print("version string: " + version_string)
 
-		BF_TELEMETRY_HOST = "http://telemetry.botero.tech:8080/bf_telemetry.lua"
 		telemetry_data = {
 			"summary": summary_txt,
 			"export_time": str(time_ms),
 			"status": 'SUCCESS',
 			"log": 'placeholder log',
+			"version": version_string,
 
 			"export_selected": kwargs["export_selected"],
 			"use_instanced_meshes": kwargs["use_instanced_meshes"],
@@ -3340,6 +3343,10 @@ def save(context, kwargs):
 		}
 
 		import requests
-		requests.post(BF_TELEMETRY_HOST, data=telemetry_data)
+		BF_TELEMETRY_HOST = "http://telemetry.botero.tech:8080/bf_telemetry.lua"
+		try:
+			requests.post(BF_TELEMETRY_HOST, data=telemetry_data, timeout=1)
+		except:
+			log.warn("unable to reach telemetry server")
 	return {'FINISHED'}
 
