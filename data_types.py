@@ -84,6 +84,10 @@ def sanitize_name(name):
 	for invalid_char in invalid_chars:
 		if invalid_char in name:
 			output = output.replace(invalid_char , "_")
+
+	if output[0] == "_":
+		# unreal doesn't like when names start in underscore
+		output = "0%s" % output
 	return output
 
 
