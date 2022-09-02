@@ -16,6 +16,14 @@ from mathutils import Matrix, Vector, Euler
 import logging
 log = logging.getLogger("bl_datasmith")
 
+# these are to track the messages, printing to the console a full message, but not leaking 
+# user info when generating telemetry reports
+
+def report_warn(message, user_info = None):
+	log.warn(message % user_info)
+def report_error(message, user_info = None):
+	log.error(message % user_info)
+
 matrix_datasmith = Matrix.Scale(100, 4)
 matrix_datasmith[1][1] *= -1.0
 
@@ -1397,14 +1405,9 @@ material_hint_twosided = False
 
 def pbr_nodetree_material(material):
 
-	global material_hint_twosided
-	material_hint_twosided = False
-
 	log.info("Collecting material: "+material.name)
 	n = Node("UEPbrMaterial")
 	n['name'] = sanitize_name(material.name)
-	exp_list = Node("Expressions")
-	n.push(exp_list)
 
 	output_node = (
 		material.node_tree.get_output_node('EEVEE')
@@ -1416,18 +1419,45 @@ def pbr_nodetree_material(material):
 		log.warn("material %s with use_nodes does not have nodes" % material.name)
 		return n
 
+	exp_list = Node("Expressions")
+	n.push(exp_list)
+	global material_hint_twosided
+	material_hint_twosided = False
+
 	surface_field = output_node.inputs['Surface']
-	if not surface_field.links:
-		log.warn("material %s with use_nodes does not have nodes" % material.name)
-		return n
+	volume_field = output_node.inputs['Volume']
+	# TODO: also check for output_node.inputs['Displacement']
 
-	global reverse_expressions
-	reverse_expressions = dict()
 
-	expressions = get_expression(surface_field, exp_list)
+	expressions = None
+	if volume_field.links:
+		report_warn("material %s has volume nodes, but we don't handle this yet, writing transparent material", material.name)
+		expressions = {
+			"BaseColor":  {"expression": exp_vector((0,0,0), exp_list)},
+			"Refraction": {"expression": exp_scalar(1.0, exp_list)},
+			"Opacity":    {"expression": exp_scalar(0.0, exp_list)},
+		}
+
+	if not expressions:
+		# here we decided using surface nodes, if there is nothing connected, the fallback behaviour is
+		# using the blackout node (already happens in get_expression)
+
+		# reverse_expressions is used to find expressions with socket outputs that were connected
+		# to another node previously, so we reuse them. We reset it when processing a new material
+		# and have some kind of "stack" when we are processing node groups
+		global reverse_expressions
+		reverse_expressions = dict()
+		
+		# the result of this call is expected to be a dictionary, as it is a shader socket, and should have
+		# fields like "BaseColor", "Roughness", etc...
+		expressions = get_expression(surface_field, exp_list)
+
+	# here we add those BaseColor, Roughness, etc... values to the UEPbrMaterial node
 	for key, value in expressions.items():
 		n.push(Node(key, value))
 
+	# we wait until for all expressions to be evaluated, if any of them hinted usage
+	# of two sided, we set the flag.
 	if material_hint_twosided:
 		n.push('\n\t\t<TwoSided enabled="%s"/>' % material_hint_twosided)
 
