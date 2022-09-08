@@ -20,9 +20,15 @@ log = logging.getLogger("bl_datasmith")
 # user info when generating telemetry reports
 
 def report_warn(message, user_info = None):
-	log.warn(message % user_info)
+	if user_info:
+		log.warn(message % user_info)
+	else:
+		log.warn(message)
 def report_error(message, user_info = None):
-	log.error(message % user_info)
+	if user_info:
+		log.error(message % user_info)
+	else:
+		log.error(message)
 
 matrix_datasmith = Matrix.Scale(100, 4)
 matrix_datasmith[1][1] *= -1.0
@@ -275,6 +281,32 @@ def exp_function_call(path, inputs, exp_list, force_default=False):
 			input_exp = get_expression(input, exp_list, force_default)
 			n.push(exp_input(idx, input_exp))
 	return { "expression": exp_list.push(n) }
+
+
+
+# TODO: use RemapValueRange, or create custom nodes for this
+
+def exp_map_range(socket, exp_list):
+	node = socket.node
+	interpolation_type = node.interpolation_type
+	assert interpolation_type in ['LINEAR', 'STEPPED_LINEAR', 'SMOOTH_STEP', 'SMOOTHER_STEP']
+	if interpolation_type != 'LINEAR':
+		report_warn("node MAP_RANGE field interpolation_type is not LINEAR, we only support LINEAR")
+
+	value = get_expression(node.inputs['Value'], exp_list)
+	from_min = get_expression(node.inputs['From Min'], exp_list)
+	from_max = get_expression(node.inputs['From Max'], exp_list)
+	to_min =   get_expression(node.inputs['To Min'], exp_list)
+	to_max =   get_expression(node.inputs['To Max'], exp_list)
+
+	path = "/Engine/Functions/Engine_MaterialFunctions03/Math/RemapValueRange"
+	n = Node("FunctionCall", {"Function": path})
+	n.push(exp_input("0", value))
+	n.push(exp_input("1", from_min))
+	n.push(exp_input("2", from_max))
+	n.push(exp_input("3", to_min))
+	n.push(exp_input("4", to_max))
+	return {"expression": exp_list.push(n)}
 
 def exp_math(node, exp_list):
 	op = node.operation
@@ -742,7 +774,23 @@ def exp_shader_to_rgb(socket, exp_list):
 		return basecolor
 	elif emissive:
 		return emissive
-	
+
+def exp_clamp(socket, exp_list):
+	node = socket.node
+	clamp_type = node.clamp_type
+	assert clamp_type in ['RANGE', 'MINMAX']
+	if clamp_type == 'RANGE':
+		report_warn("node Clamp field clamp_type is RANGE, but we only support MIN_MAX")
+	value = get_expression(node.inputs['Value'], exp_list)
+	clamp_min = get_expression(node.inputs['Min'], exp_list)
+	clamp_max = get_expression(node.inputs['Max'], exp_list)
+	n = Node("Clamp")
+	n.push(exp_input("0", value))
+	n.push(exp_input("1", clamp_min))
+	n.push(exp_input("2", clamp_max))
+
+	return {"expression": exp_list.push(n)}
+
 def exp_color_ramp(from_node, exp_list):
 	ramp = from_node.color_ramp
 
@@ -1068,6 +1116,22 @@ def get_expression_inner(socket, exp_list):
 		if add_opacity:
 			bsdf['Opacity'] = get_expression(opacity_field, exp_list)
 
+
+		emission_field = node.inputs['Emission']
+		emission_strength_field = node.inputs['Emission Strength']
+		multiply_emission = False
+		if len(emission_strength_field.links) != 0:
+			multiply_emission = True
+		elif emission_strength_field.default_value != 1:
+			multiply_emission = True
+		if multiply_emission:
+			mult = Node("Multiply")
+			mult.push(exp_input("0", get_expression(emission_field, exp_list)))
+			mult.push(exp_input("1", get_expression(emission_strength_field, exp_list)))
+			bsdf["EmissiveColor"] = {"expression": exp_list.push(mult)}
+		else:
+			bsdf["EmissiveColor"] = get_expression(emission_field, exp_list)
+
 	if node.type == 'EEVEE_SPECULAR':
 		log.warn("EEVEE_SPECULAR incomplete implementation")
 		bsdf = {
@@ -1371,8 +1435,6 @@ def get_expression_inner(socket, exp_list):
 		exp = exp_invert(node, exp_list)
 		return {"expression": exp}
 	# if node.type == 'LIGHT_FALLOFF':
-	# if node.type == 'TEX_CHECKER':
-	# if node.type == 'TEX_CHECKER':
 
 	if node.type == 'MIX_RGB':
 		exp = exp_mixrgb(node, exp_list)
@@ -1401,6 +1463,10 @@ def get_expression_inner(socket, exp_list):
 	# if node.type == 'WAVELENGTH':
 	if node.type == 'BLACKBODY':
 		return exp_blackbody(node, exp_list)
+
+	if node.type == 'CLAMP':
+		return exp_clamp(socket, exp_list)
+
 	if node.type == 'VALTORGB':
 		exp = exp_color_ramp(node, exp_list)
 		return {"expression": exp, "OutputIndex": 0}
@@ -1421,6 +1487,8 @@ def get_expression_inner(socket, exp_list):
 
 	if node.type == 'RGBTOBW':
 		return exp_rgb_to_bw(socket, exp_list)
+	if node.type == 'MAP_RANGE':
+		return exp_map_range(socket, exp_list)
 	if node.type == 'MATH':
 		return exp_math(node, exp_list)
 	if node.type == 'VECT_MATH':
