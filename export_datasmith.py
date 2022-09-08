@@ -1058,19 +1058,16 @@ def get_expression_inner(socket, exp_list):
 		}
 
 
-		# only add opacity if transmission != 0
-		transmission_field = node.inputs['Transmission']
-		add_transmission = False
-		if len(transmission_field.links) != 0:
-			add_transmission = True
-		elif transmission_field.default_value != 0:
-			add_transmission = True
-		if add_transmission:
-			n = Node("OneMinus")
-			exp_transmission = get_expression(node.inputs['Transmission'], exp_list)
-			n.push(exp_input("0", exp_transmission))
-			exp_opacity = {"expression": exp_list.push(n)}
-			bsdf['Opacity'] = exp_opacity
+		# only add opacity if alpha != 1
+		opacity_field = node.inputs['Alpha']
+		add_opacity = False
+		if len(opacity_field.links) != 0:
+			add_opacity = True
+		elif opacity_field.default_value != 1:
+			add_opacity = True
+		if add_opacity:
+			bsdf['Opacity'] = get_expression(opacity_field, exp_list)
+
 	if node.type == 'EEVEE_SPECULAR':
 		log.warn("EEVEE_SPECULAR incomplete implementation")
 		bsdf = {
@@ -1151,30 +1148,48 @@ def get_expression_inner(socket, exp_list):
 			# TODO: read inputs 'Anisotropy' and 'Rotation' and 'Tangent'
 		}
 
+	elif node.type == 'EMISSION':
+		mult = Node("Multiply")
+		mult.push(exp_input("0", get_expression(node.inputs['Color'], exp_list)))
+		mult.push(exp_input("1", get_expression(node.inputs['Strength'], exp_list)))
+		mult_exp = exp_list.push(mult)
+		bsdf = {
+			"EmissiveColor": {"expression": mult_exp}
+		}
+
+	elif node.type == 'HOLDOUT':
+		bsdf = {
+			"BaseColor": {"expression": exp_vector((0,0,0), exp_list)},
+			"Roughness": {"expression": exp_scalar(1.0, exp_list)},
+		}
 
 	if bsdf:
+		
+		assert socket.type == 'SHADER'
 		if socket.type == 'SHADER':
 			if "Normal" in node.inputs:
 				normal_input = node.inputs["Normal"]
 				if normal_input.links:
 					bsdf["Normal"] = get_expression(normal_input, exp_list)
 
+		if not "BaseColor" in bsdf:
+			bsdf["BaseColor"] = {"expression": exp_vector((0,0,0), exp_list)}
+		if not "Roughness" in bsdf:
+			bsdf["Roughness"] = {"expression": exp_scalar(1, exp_list)}
+		if not "Metallic" in bsdf:
+			bsdf["Metallic"] =  {"expression": exp_scalar(0.5, exp_list)}
+		if not "Specular" in bsdf:
+			bsdf["Specular"] =  {"expression": exp_scalar(0.5, exp_list)}
+		if not "EmissiveColor" in bsdf:
+			bsdf["EmissiveColor"] = {"expression": exp_vector((0,0,0), exp_list)}
+
+		# we don't want to add opacity if not needed, because that will make the unreal
+		# importer set this material's blend mode as translucent
+		# if not "Opacity" in bsdf:
+			# bsdf["Opacity"] =   {"expression": exp_scalar(1, exp_list)}
+
 		return bsdf
 
-	if node.type == 'EMISSION':
-		mult = Node("Multiply")
-		mult.push(exp_input("0", get_expression(node.inputs['Color'], exp_list)))
-		mult.push(exp_input("1", get_expression(node.inputs['Strength'], exp_list)))
-		mult_exp = exp_list.push(mult)
-		return {
-			"EmissiveColor": {"expression": mult_exp}
-		}
-
-	if node.type == 'HOLDOUT':
-		return {
-			"BaseColor": {"expression": exp_scalar(0.0, exp_list)},
-			"Roughness": {"expression": exp_scalar(1.0, exp_list)},
-		}
 
 	if node.type == 'ADD_SHADER':
 		expressions = get_expression(node.inputs[0], exp_list)
@@ -1182,16 +1197,38 @@ def get_expression_inner(socket, exp_list):
 
 		expressions1 = get_expression(node.inputs[1], exp_list)
 		assert expressions1
-		for name, exp in expressions1.items():
 
-			if name in expressions:
-				n = Node("Add")
-				n.push(exp_input("0", expressions[name]))
-				n.push(exp_input("1", exp))
-				expressions[name] = {"expression":exp_list.push(n)}
+		add_expression = {}
+
+		def make_default_for_field(field_name, exp_list):
+			if field_name == "Opacity":
+				return {"expression": exp_scalar(1, exp_list)}
 			else:
-				expressions[name] = exp
-		return expressions
+				return {"expression": exp_scalar(0, exp_list)}
+
+
+		all_keys = {*expressions.keys(), *expressions1.keys()}
+		for name in all_keys:
+			exp_a = expressions.get(name)
+			if not exp_a:
+				exp_a = make_default_for_field(name, exp_list)
+			exp_b = expressions1.get(name)
+			if not exp_b:
+				exp_b = make_default_for_field(name, exp_list)
+			
+			use_add = name in ["BaseColor", "Opacity", "EmissiveColor"]
+			n = Node("Add" if use_add else "LinearInterpolate")
+			n.push(exp_input("0", exp_a))
+			n.push(exp_input("1", exp_b))
+
+	
+			if not use_add:
+				n.push(exp_input("2", {"expression": exp_scalar(0.5, exp_list)}))
+
+			add_expression[name] = {"expression":exp_list.push(n)}
+
+
+		return add_expression
 	if node.type == 'MIX_SHADER':
 		expressions = get_expression(node.inputs[1], exp_list)
 		assert expressions
