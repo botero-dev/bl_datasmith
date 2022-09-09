@@ -289,7 +289,7 @@ def exp_function_call(path, inputs, exp_list, force_default=False):
 def exp_map_range(socket, exp_list):
 	node = socket.node
 	interpolation_type = node.interpolation_type
-	assert interpolation_type in ['LINEAR', 'STEPPED_LINEAR', 'SMOOTH_STEP', 'SMOOTHER_STEP']
+	assert interpolation_type in ['LINEAR', 'STEPPED', 'SMOOTHSTEP', 'SMOOTHERSTEP']
 	if interpolation_type != 'LINEAR':
 		report_warn("node MAP_RANGE field interpolation_type is not LINEAR, we only support LINEAR")
 
@@ -1236,6 +1236,7 @@ def get_expression_inner(socket, exp_list):
 				if normal_input.links:
 					bsdf["Normal"] = get_expression(normal_input, exp_list)
 
+		"""
 		if not "BaseColor" in bsdf:
 			bsdf["BaseColor"] = {"expression": exp_vector((0,0,0), exp_list)}
 		if not "Roughness" in bsdf:
@@ -1251,7 +1252,7 @@ def get_expression_inner(socket, exp_list):
 		# importer set this material's blend mode as translucent
 		# if not "Opacity" in bsdf:
 			# bsdf["Opacity"] =   {"expression": exp_scalar(1, exp_list)}
-
+		"""
 		return bsdf
 
 
@@ -1273,24 +1274,34 @@ def get_expression_inner(socket, exp_list):
 
 		all_keys = {*expressions.keys(), *expressions1.keys()}
 		for name in all_keys:
+
+
 			exp_a = expressions.get(name)
-			if not exp_a:
-				exp_a = make_default_for_field(name, exp_list)
 			exp_b = expressions1.get(name)
-			if not exp_b:
-				exp_b = make_default_for_field(name, exp_list)
-			
-			use_add = name in ["BaseColor", "Opacity", "EmissiveColor"]
-			n = Node("Add" if use_add else "LinearInterpolate")
-			n.push(exp_input("0", exp_a))
-			n.push(exp_input("1", exp_b))
+			if exp_a and exp_b:
 
-	
-			if not use_add:
-				n.push(exp_input("2", {"expression": exp_scalar(0.5, exp_list)}))
+				use_add = name in ["BaseColor", "EmissiveColor"]
+				n = Node("Add" if use_add else "LinearInterpolate")
+				n.push(exp_input("0", exp_a))
+				n.push(exp_input("1", exp_b))
+				if not use_add:
+					n.push(exp_input("2", {"expression": exp_scalar(0.5, exp_list)}))
 
-			add_expression[name] = {"expression":exp_list.push(n)}
+				add_expression[name] = {"expression":exp_list.push(n)}
+			else:
+				exp = exp_a or exp_b
+				# for opacity expressions, mix with zero (workaround for transparent nodes added to glossy nodes)
+				# for the rest, use the property of the node that has it
+				if name == "Opacity":
+					n = Node("LinearInterpolate")
+					n.push(exp_input("0", exp))
+					n.push(exp_input("1", (exp_scalar(1, exp_list), 0)))
+					n.push(exp_input("2", (exp_scalar(0.5, exp_list), 0)))
+					add_expression[name] = {"expression": exp_list.push(n)}
+				else:
+					add_expression[name] = exp
 
+			assert add_expression[name]
 
 		return add_expression
 	if node.type == 'MIX_SHADER':
