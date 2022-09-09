@@ -1301,7 +1301,9 @@ def get_expression_inner(socket, exp_list):
 				else:
 					add_expression[name] = exp
 
-			assert add_expression[name]
+			if name != "Normal":
+				# Normal expressions can be left disconnected, so we don't enforce them
+				assert add_expression[name]
 
 		return add_expression
 	if node.type == 'MIX_SHADER':
