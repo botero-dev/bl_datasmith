@@ -2429,8 +2429,6 @@ def calc_hash(image_path):
 	return hash_md5.hexdigest()
 
 
-meshes_per_original = {}
-
 # send instance.original to this function
 # if this returns none, it didn't convert to geometry
 def get_mesh_name(bl_obj_inst):
@@ -2471,6 +2469,7 @@ def get_mesh_name(bl_obj_inst):
 	# if the mesh has been processed already, return the name
 	# if the mesh was processed, but its result was none, is because
 	# it didn't have geometry, so we convert that to simple actor
+	meshes_per_original = datasmith_context["meshes_per_original"]
 	if bl_mesh_name in meshes_per_original:
 		if meshes_per_original[bl_mesh_name] is None:
 			return None
@@ -3230,6 +3229,7 @@ def collect_and_save(context, args, save_path):
 		"anim_objects": [],
 		"textures": [],
 		"meshes": [],
+		"meshes_per_original": {},
 		"materials": [],
 		"material_curves": None,
 		"metadata": [],
