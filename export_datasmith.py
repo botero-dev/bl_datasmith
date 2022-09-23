@@ -284,28 +284,53 @@ def exp_function_call(path, inputs, exp_list, force_default=False):
 
 
 
-# TODO: use RemapValueRange, or create custom nodes for this
+MAT_FUNC_MAPRANGE_LINEAR          = "/DatasmithBlenderContent/MaterialFunctions/MapRange_Linear"
+MAT_FUNC_MAPRANGE_LINEAR_CLAMPED  = "/DatasmithBlenderContent/MaterialFunctions/MapRange_Linear_Clamped"
+MAT_FUNC_MAPRANGE_STEPPED         = "/DatasmithBlenderContent/MaterialFunctions/MapRange_Stepped"
+MAT_FUNC_MAPRANGE_STEPPED_CLAMPED = "/DatasmithBlenderContent/MaterialFunctions/MapRange_Stepped_Clamped"
+MAT_FUNC_MAPRANGE_SMOOTHSTEP      = "/DatasmithBlenderContent/MaterialFunctions/MapRange_SmoothStep"
+MAT_FUNC_MAPRANGE_SMOOTHERSTEP    = "/DatasmithBlenderContent/MaterialFunctions/MapRange_SmootherStep"
 
 def exp_map_range(socket, exp_list):
 	node = socket.node
 	interpolation_type = node.interpolation_type
-	assert interpolation_type in ['LINEAR', 'STEPPED', 'SMOOTHSTEP', 'SMOOTHERSTEP']
-	if interpolation_type != 'LINEAR':
-		report_warn("node MAP_RANGE field interpolation_type is not LINEAR, we only support LINEAR")
+	func_path = None
+	if interpolation_type == 'LINEAR':
+		if node.clamp:
+			func_path = MAT_FUNC_MAPRANGE_LINEAR_CLAMPED
+		else:
+			func_path = MAT_FUNC_MAPRANGE_LINEAR
+	elif interpolation_type == 'STEPPED':
+		if node.clamp:
+			func_path = MAT_FUNC_MAPRANGE_STEPPED_CLAMPED
+		else:
+			func_path = MAT_FUNC_MAPRANGE_STEPPED
+	elif interpolation_type == 'SMOOTHSTEP':
+		func_path = MAT_FUNC_MAPRANGE_SMOOTHSTEP
+	elif interpolation_type == 'SMOOTHERSTEP':
+		func_path = MAT_FUNC_MAPRANGE_SMOOTHERSTEP
 
-	value = get_expression(node.inputs['Value'], exp_list)
+	assert func_path
+
+
+	value =    get_expression(node.inputs['Value'], exp_list)
 	from_min = get_expression(node.inputs['From Min'], exp_list)
 	from_max = get_expression(node.inputs['From Max'], exp_list)
 	to_min =   get_expression(node.inputs['To Min'], exp_list)
 	to_max =   get_expression(node.inputs['To Max'], exp_list)
 
-	path = "/Engine/Functions/Engine_MaterialFunctions03/Math/RemapValueRange"
-	n = Node("FunctionCall", {"Function": path})
+	n = Node("FunctionCall", {"Function": func_path})
 	n.push(exp_input("0", value))
 	n.push(exp_input("1", from_min))
 	n.push(exp_input("2", from_max))
 	n.push(exp_input("3", to_min))
 	n.push(exp_input("4", to_max))
+
+	if interpolation_type == 'STEPPED':
+		steps = get_expression(node.inputs['Steps'], exp_list)
+		n.push(exp_input("5", steps))
+
+
 	return {"expression": exp_list.push(n)}
 
 def exp_math(node, exp_list):
@@ -529,11 +554,10 @@ op_custom_functions = {
 	"MAPPING_POINT3D":    "/DatasmithBlenderContent/MaterialFunctions/MappingPoint3D",
 	"MAPPING_TEX2D":      "/DatasmithBlenderContent/MaterialFunctions/MappingTexture2D_2",
 	"MAPPING_TEX3D":      "/DatasmithBlenderContent/MaterialFunctions/MappingTexture3D",
-	"MAPPING_NORMAL":      "/DatasmithBlenderContent/MaterialFunctions/MappingNormal",
+	"MAPPING_NORMAL":     "/DatasmithBlenderContent/MaterialFunctions/MappingNormal",
 	"NORMAL_FROM_HEIGHT": "/Engine/Functions/Engine_MaterialFunctions03/Procedurals/NormalFromHeightmap",
 	"WORLD_POSITION":     "/DatasmithBlenderContent/MaterialFunctions/BlenderWorldPosition",
 }
-
 
 
 def exp_generic_function(node, exp_list, node_type, socket_names):
@@ -778,16 +802,35 @@ def exp_shader_to_rgb(socket, exp_list):
 def exp_clamp(socket, exp_list):
 	node = socket.node
 	clamp_type = node.clamp_type
-	assert clamp_type in ['RANGE', 'MINMAX']
-	if clamp_type == 'RANGE':
-		report_warn("node Clamp field clamp_type is RANGE, but we only support MIN_MAX")
+
 	value = get_expression(node.inputs['Value'], exp_list)
 	clamp_min = get_expression(node.inputs['Min'], exp_list)
 	clamp_max = get_expression(node.inputs['Max'], exp_list)
+	
 	n = Node("Clamp")
-	n.push(exp_input("0", value))
-	n.push(exp_input("1", clamp_min))
-	n.push(exp_input("2", clamp_max))
+	
+	if clamp_type == 'MINMAX':
+		n.push(exp_input("0", value))
+		n.push(exp_input("1", clamp_min))
+		n.push(exp_input("2", clamp_max))
+	
+	elif clamp_type == 'RANGE':
+		# logic for allowing min > max
+		# in the end it ends up being using min as min(in_min, in_max) and the same for max
+		checked_min = Node("Min")
+		checked_min.push(exp_input("0", clamp_min))
+		checked_min.push(exp_input("1", clamp_max))
+	
+		checked_max = Node("Max")
+		checked_max.push(exp_input("0", clamp_min))
+		checked_max.push(exp_input("1", clamp_max))
+	
+		n.push(exp_input("0", value))
+		n.push(exp_input("1", exp_list.push(checked_min)))
+		n.push(exp_input("2", exp_list.push(checked_max)))
+	
+	else:
+		log.error("unsupported clamp type %s" % clamp_type)
 
 	return {"expression": exp_list.push(n)}
 
