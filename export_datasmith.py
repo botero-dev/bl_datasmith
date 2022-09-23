@@ -2650,7 +2650,11 @@ def fill_obj_camera(obj_dict, target):
 	fields.append('\t<DepthOfField enabled="%s"/>\n' % use_dof)
 	dof_target = bl_cam.dof.focus_object
 	if dof_target:
-		fields.append('\t<LookAt Actor="%s"/>\n' % sanitize_name(dof_target.name))
+		# BAD CODE: dof target is not the same thing as lookat target.
+		# lookat target should be determined from a lookat modifier if it exists
+		# and focus target maybe corresponds to a different property in the camera field 
+		#fields.append('\t<LookAt Actor="%s"/>\n' % sanitize_name(dof_target.name))
+		pass
 
 	fields.append('\t<SensorWidth value="%f"/>\n' % bl_cam.sensor_width)
 
@@ -3041,9 +3045,14 @@ def get_instance_local_matrix(instance):
 
 	if parent:
 		parent_matrix = parent.matrix_world
-		instance_matrix = parent_matrix.inverted() @ instance.matrix_world
+		instance_matrix = parent_matrix.inverted() @ instance_matrix
 
 	instance_matrix = matrix_datasmith @ instance_matrix @ matrix_datasmith.inverted()
+
+	object_type = instance.object.type
+	if object_type in ['CAMERA', 'LIGHT']:
+		instance_matrix = instance_matrix @ matrix_forward
+
 	return instance_matrix
 
 def collect_anims(context, new_iterator: bool, use_instanced_meshes: bool):
