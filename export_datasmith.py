@@ -996,6 +996,22 @@ def exp_group(socket, exp_list):
 def exp_group_input(socket, exp_list):
 	outer_expression = group_context[socket.name]
 	return outer_expression
+
+def exp_ambient_occlusion(socket, exp_list):
+	socket_name = socket.name
+	if socket_name == "Color":
+		report_warn("Unsupported material node: AMBIENT_OCCLUSION, exporting plain color instead")
+		ao_node = socket.node_tree
+		color_input = ao_node.inputs["Color"]
+		return get_expression(color_input, exp_list)
+	elif socket_name == "AO":
+		report_warn("Unsupported material node: AMBIENT_OCCLUSION, exporting 1.0 value instead")
+		exp = exp_scalar(1.0, exp_list)
+		return { "expression": exp }
+	else:
+		report_error("Unsupported AMBIENT_OCCLUSION output: %s" % socket_name)
+
+
 def exp_attribute(socket, exp_list):
 	exp = exp_list.push(Node("VertexColor"))
 	ret = {"expression": exp, "OutputIndex": 0}
@@ -1378,7 +1394,8 @@ def get_expression_inner(socket, exp_list):
 	# from here the return type should be {expression:node_idx, OutputIndex: socket_idx}
 	# Add > Input
 
-	# if node.type == 'AMBIENT_OCCLUSION':
+	if node.type == 'AMBIENT_OCCLUSION':
+		return exp_ambient_occlusion(socket, exp_list)
 	if node.type == 'ATTRIBUTE':
 		return exp_attribute(socket, exp_list)
 	if node.type == 'VERTEX_COLOR':
