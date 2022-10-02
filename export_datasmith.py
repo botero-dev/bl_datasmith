@@ -105,6 +105,34 @@ def exp_texcoord_node(socket, exp_list):
 	#	direction of reflection in world coordinates
 	log.warn("Texcoord node doesn't implement %s yet" % socket_name)
 
+
+tex_gradient_node_map = {
+	'LINEAR':           "/DatasmithBlenderContent/MaterialFunctions/TexGradient_Linear",
+	'QUADRATIC':        "/DatasmithBlenderContent/MaterialFunctions/TexGradient_Quadratic",
+	'EASING':           "/DatasmithBlenderContent/MaterialFunctions/TexGradient_Easing",
+	'DIAGONAL':         "/DatasmithBlenderContent/MaterialFunctions/TexGradient_Diagonal",
+	'SPHERICAL':        "/DatasmithBlenderContent/MaterialFunctions/TexGradient_Spherical",
+	'QUADRATIC_SPHERE': "/DatasmithBlenderContent/MaterialFunctions/TexGradient_QuadraticSphere",
+	'RADIAL':           "/DatasmithBlenderContent/MaterialFunctions/TexGradient_Radial",
+}
+
+
+def exp_tex_gradient(socket, exp_list):
+	node = socket.node
+	gradient_type = node.gradient_type
+
+	function_path = tex_gradient_node_map[gradient_type]
+	n = Node("FunctionCall", { "Function": function_path})
+	in_exp = get_expression(node.inputs["Vector"], exp_list, skip_default_warn=True)
+	n.push(exp_input("0", in_exp))
+
+	out_socket = 0
+	if socket.name == "Fac":
+		out_socket = 1
+
+	return { "expression": exp_list.push(n), "OutputIndex":out_socket }
+
+
 tex_musgrave_dimensions_map = {
 	'1D': '1d',
 	'2D': '2d',
@@ -185,6 +213,8 @@ def exp_tex_musgrave(socket, exp_list):
 
 
 def exp_tex_noise(socket, exp_list):
+
+	report_warn("TODO: move exp_tex_noise to use the exact same algorithm blender uses")
 
 	# default if socket.name == "Fac"
 	function_path = "/DatasmithBlenderContent/MaterialFunctions/TexNoise"
@@ -1523,12 +1553,18 @@ def get_expression_inner(socket, exp_list):
 	if node.type == 'TEX_CHECKER':
 		return exp_tex_checker(socket, exp_list)
 	# if node.type == 'TEX_ENVIRONMENT':
-	# if node.type == 'TEX_GRADIENT':
+	if node.type == 'TEX_GRADIENT':
+		return exp_tex_gradient(socket, exp_list)
 	# if node.type == 'TEX_IES':
+
 
 
 	if node.type == 'TEX_IMAGE':
 		cached_node = None
+		# we specially cache this in reverse_expressions by node (and not by socket)
+		# so we reuse the node when we find connections to the alpha socket
+		# this shouldn't be needed if we moved the whole reverse_expressions logic
+		# to happen with both nodes and sockets at the same time (in the future maybe)
 		if node in reverse_expressions:
 			cached_node = reverse_expressions[node]
 
