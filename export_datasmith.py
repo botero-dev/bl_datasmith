@@ -84,10 +84,12 @@ def exp_texcoord(exp_list, index=0, u_tiling=1.0, v_tiling=1.0):
 	pad.push(exp_input("1", zero ))
 	return {"expression": exp_list.push(pad) }
 
+
+MAT_FUNC_TEXCOORD_GENERATED = "/DatasmithBlenderContent/MaterialFunctions/TexCoord_Generated"
 def exp_texcoord_node(socket, exp_list):
 	socket_name = socket.name
 	if socket_name == "Generated":
-		n = Node("FunctionCall", { "Function": "/Engine/Functions/Engine_MaterialFunctions02/UVs/BoundingBoxBased_0-1_UVW"})
+		n = Node("FunctionCall", { "Function": MAT_FUNC_TEXCOORD_GENERATED })
 		return { "expression": exp_list.push(n) }
 	# if socket_name == "Normal":
 	if socket_name == "UV":
@@ -102,6 +104,85 @@ def exp_texcoord_node(socket, exp_list):
 	# if socket_name == "Reflection":
 	#	direction of reflection in world coordinates
 	log.warn("Texcoord node doesn't implement %s yet" % socket_name)
+
+tex_musgrave_dimensions_map = {
+	'1D': '1d',
+	'2D': '2d',
+	'3D': '3d',
+	'4D': '4d',
+}
+
+tex_musgrave_type_map = {
+	'MULTIFRACTAL':        'multi_fractal',
+	'RIDGED_MULTIFRACTAL': 'ridged_multi_fractal',
+	'HYBRID_MULTIFRACTAL': 'hybrid_multi_fractal',
+	'FBM':                 'fBm',
+	'HETERO_TERRAIN':      'hetero_terrain',
+}
+
+def exp_tex_musgrave(socket, exp_list):
+	node = socket.node
+
+	musgrave_type = tex_musgrave_type_map[node.musgrave_type]
+	dimensions = tex_musgrave_dimensions_map[node.musgrave_dimensions]
+	function_name = "node_tex_musgrave_%s_%s" % (musgrave_type, dimensions)
+
+	n = Node("Custom", {
+		"Description": function_name,
+		"OutputType": "1" # output is scalar,
+	})
+	
+	# n.push(Node("Define", {"value": "HELLO=2"}))
+	n.push(Node("Include", {"path": "/Plugin/DatasmithBlenderContent/BlenderMaterialTexMusgrave.ush"}))
+
+	# by the end, the arguments array should have the 8 params, even if unused
+	arguments = []
+	arguments2 = []
+
+	inputs = node.inputs
+	def add_param(param_name, cond=True):
+		if cond:
+			arguments.append(param_name)
+			param_exp = get_expression(inputs[param_name], exp_list, skip_default_warn=True)
+			if param_exp == None:
+				assert param_name == "Vector"
+				n = Node("FunctionCall", { "Function": MAT_FUNC_TEXCOORD_GENERATED })
+				param_exp = { "expression": exp_list.push(n) }
+			arguments2.append((param_name, param_exp))
+		else:
+			arguments.append("0")
+
+	use_vector = (dimensions!='1d')
+	add_param("Vector", cond=use_vector)
+	use_w = (dimensions == '1d' or dimensions == '4d')
+	add_param("W", cond=use_w)
+
+	add_param("Scale")
+	add_param("Detail")
+	add_param("Dimension")
+	add_param("Lacunarity")
+
+	use_offset = musgrave_type in ("ridged_multi_fractal", "hybrid_multi_fractal", "hetero_terrain")
+	add_param("Offset", cond=use_offset)
+		
+	use_gain = musgrave_type in ("ridged_multi_fractal", "hybrid_multi_fractal")
+	add_param("Gain", cond=use_gain)
+
+	for idx, arg in enumerate(arguments2):
+		n.push(Node("Arg", {"index": idx, "name": arg[0]}))
+	
+	for idx, arg in enumerate(arguments2):
+		n.push(exp_input(idx, arg[1]))
+
+	assert len(arguments) == 8
+	func_params = ", ".join(arguments)
+
+	code = "float r; %s(%s, r); return r;" % (function_name, func_params)
+
+	n.push(Node("Code", children=[code]))
+
+	return { "expression": exp_list.push(n) }
+
 
 def exp_tex_noise(socket, exp_list):
 
@@ -1444,8 +1525,8 @@ def get_expression_inner(socket, exp_list):
 	# if node.type == 'TEX_ENVIRONMENT':
 	# if node.type == 'TEX_GRADIENT':
 	# if node.type == 'TEX_IES':
-	if node.type == 'TEX_NOISE':
-		return exp_tex_noise(socket, exp_list)
+
+
 	if node.type == 'TEX_IMAGE':
 		cached_node = None
 		if node in reverse_expressions:
@@ -1495,6 +1576,10 @@ def get_expression_inner(socket, exp_list):
 
 		return { "expression": cached_node, "OutputIndex": output_index }
 
+	if node.type == 'TEX_MUSGRAVE':
+		return exp_tex_musgrave(socket, exp_list)
+	if node.type == 'TEX_NOISE':
+		return exp_tex_noise(socket, exp_list)
 	# Add > Color
 	if node.type == 'BRIGHTCONTRAST':
 		return exp_bright_contrast(node, exp_list)
