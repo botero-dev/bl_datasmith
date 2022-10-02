@@ -133,7 +133,7 @@ def exp_tex_gradient(socket, exp_list):
 	return { "expression": exp_list.push(n), "OutputIndex":out_socket }
 
 
-tex_musgrave_dimensions_map = {
+tex_dimensions_map = {
 	'1D': '1d',
 	'2D': '2d',
 	'3D': '3d',
@@ -152,7 +152,7 @@ def exp_tex_musgrave(socket, exp_list):
 	node = socket.node
 
 	musgrave_type = tex_musgrave_type_map[node.musgrave_type]
-	dimensions = tex_musgrave_dimensions_map[node.musgrave_dimensions]
+	dimensions = tex_dimensions_map[node.musgrave_dimensions]
 	function_name = "node_tex_musgrave_%s_%s" % (musgrave_type, dimensions)
 
 	n = Node("Custom", {
@@ -214,19 +214,36 @@ def exp_tex_musgrave(socket, exp_list):
 
 def exp_tex_noise(socket, exp_list):
 
-	report_warn("TODO: move exp_tex_noise to use the exact same algorithm blender uses")
+	node = socket.node
+	dimensions = tex_dimensions_map[node.noise_dimensions]
 
-	# default if socket.name == "Fac"
-	function_path = "/DatasmithBlenderContent/MaterialFunctions/TexNoise"
+	function_path = "/DatasmithBlenderContent/MaterialFunctions/TexNoise_%s" % dimensions
+	n = Node("FunctionCall", { "Function": function_path})
+
+	input_idx = 0
+	inputs = node.inputs
+	def push_input(name):
+		nonlocal input_idx
+		exp = get_expression(inputs[name], exp_list, skip_default_warn=True)
+		if exp:
+			n.push(exp_input(input_idx, exp))
+		else:
+			assert name == "Vector" # we only allow disconnected node for the Vector input
+		input_idx += 1
+
+	if dimensions!='1d':
+		push_input("Vector")
+	if dimensions == '1d' or dimensions == '4d':
+		push_input("W")
+
+	push_input("Scale")
+	push_input("Detail")
+	push_input("Roughness")
+	push_input("Distortion")
+
 	out_socket = 0
 	if socket.name == "Color":
 		out_socket = 1
-	n = Node("FunctionCall", { "Function": function_path})
-	exp_1 = get_expression(socket.node.inputs['Vector'], exp_list)
-	exp_2 = get_expression(socket.node.inputs['Scale'], exp_list)
-	if exp_1:
-		n.push(exp_input("0", exp_1))
-	n.push(exp_input("1", exp_2))
 	return { "expression": exp_list.push(n), "OutputIndex":out_socket }
 
 
