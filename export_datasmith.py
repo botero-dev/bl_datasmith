@@ -934,17 +934,22 @@ def exp_layer_weight(socket, exp_list):
 		exp_blend = get_expression(socket.node.inputs['Blend'], exp_list)
 		n = Node("FunctionCall", { "Function": op_custom_functions['LAYER_WEIGHT']})
 		n.push(exp_input("0", exp_blend))
+
+		normal_exp = get_expression(socket.node.inputs["Normal"], exp_list, skip_default_warn=True)
+		if normal_exp:
+			n.push(exp_input("1", normal_exp))
+
 		expr = exp_list.push(n)
 		reverse_expressions[socket.node] = expr
 
-	log.warn("layer weight missing normal input")
-
+	out_index = 0
 	if socket.name == "Fresnel":
-		return {"expression": expr, "OutputIndex": 0}
+		out_index = 0
 	elif socket.name == "Facing":
-		return {"expression": expr, "OutputIndex": 1}
-	log.error("LAYER_WEIGHT node from unknown socket")
-	return {"expression": expr, "OutputIndex": 0}
+		out_index = 1
+	else:
+		report_error("LAYER_WEIGHT node from unknown socket")
+	return {"expression": expr, "OutputIndex": out_index}
 
 def exp_light_path(socket, exp_list):
 	log.warn("incomplete node implementation: LIGHT_PATH")
