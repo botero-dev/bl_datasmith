@@ -814,6 +814,14 @@ def exp_input(input_idx, expression, output_idx = 0):
 		output_idx = expression.get("OutputIndex", 0)
 	elif type(expression) is tuple:
 		expression_idx, output_idx = expression
+	elif expression == None:
+		report_error("trying to use expression=None for input for another expression")
+		expression_idx = -1
+	else: # if expression is single value
+		assert type(expression) == int
+		expression_idx = expression
+		# output_idx = 0 # already set as default value
+
 	return '\n\t\t\t\t<Input Name="%s" expression="%s" OutputIndex="%s"/>' % (input_idx, expression_idx, output_idx)
 
 def exp_invert(node, exp_list):
@@ -1286,7 +1294,7 @@ def get_expression(field, exp_list, force_default=False, skip_default_warn=False
 		field.type, field.name,
 	))
 
-	if not field.links:
+	if not field.links or not field.links[0].from_socket.enabled:
 		if field.type == 'VALUE':
 			exp = exp_scalar(field.default_value, exp_list)
 			return {"expression": exp, "OutputIndex": 0}

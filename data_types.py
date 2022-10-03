@@ -123,6 +123,8 @@ class Node:
 			for child in self.children:
 				output += str(child)
 			if len(self.children) == 1 and type(self.children[0]) == str:
+				# TODO: instead of doing this, I think it would be nice to allow children
+				# to be a string, because that is when we're interested in inlining
 				output += '</{}>'.format(self.name)
 			else:
 				output += Node.prefix + '</{}>'.format(self.name)
