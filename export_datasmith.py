@@ -246,6 +246,98 @@ def exp_tex_noise(socket, exp_list):
 		out_socket = 1
 	return { "expression": exp_list.push(n), "OutputIndex":out_socket }
 
+# these are encoded as float values when sent to the shader code
+tex_voronoi_metric_map = {
+	'EUCLIDEAN': 0,
+	'MANHATTAN': 1,
+	'CHEBYCHEV': 2,
+	'MINKOWSKI': 3,
+}
+
+tex_voronoi_type_map = {
+	'F1':                'f1',
+	'F2':                'f2',
+	'SMOOTH_F1':         'smooth_f1',
+	'DISTANCE_TO_EDGE':  'distance_to_edge',
+	'N_SPHERE_RADIUS':   'n_sphere_radius',
+}
+
+def exp_tex_voronoi(socket, exp_list):
+
+	node = socket.node
+	dimensions = tex_dimensions_map[node.voronoi_dimensions]
+	voronoi_type = node.feature
+	voronoi_type_fn = tex_voronoi_type_map[voronoi_type]
+
+	function_path = "/DatasmithBlenderContent/MaterialFunctions/TexVoronoi_%s_%s" % (voronoi_type_fn, dimensions)
+	n = Node("FunctionCall", { "Function": function_path})
+
+	input_idx = 0
+	inputs = node.inputs
+	def push_input(name):
+		nonlocal input_idx
+		exp = get_expression(inputs[name], exp_list, skip_default_warn=True)
+		if exp:
+			n.push(exp_input(input_idx, exp))
+		else:
+			assert name == "Vector" # we only allow disconnected node for the Vector input
+		input_idx += 1
+
+
+	if dimensions!='1d':
+		push_input("Vector")
+	if dimensions == '1d' or dimensions == '4d':
+		push_input("W")
+
+	push_input("Scale")
+
+	if voronoi_type == "SMOOTH_F1":
+		push_input("Smoothness")
+
+	use_metric = (dimensions != "1d") and (voronoi_type not in ('DISTANCE_TO_EDGE', 'N_SPHERE_RADIUS'))
+	metric = node.distance
+	if use_metric:
+		if metric == 'MINKOWSKI':
+			push_input("Exponent")
+		else:
+			input_idx += 1
+
+	push_input("Randomness")
+
+	if use_metric:
+		metric_float = tex_voronoi_metric_map[metric]
+		n.push(exp_input(input_idx, exp_scalar(metric_float, exp_list)))
+
+	socket_indices = None
+	out_socket = 0
+	if voronoi_type == 'DISTANCE_TO_EDGE':
+		socket_indices = {"Distance": 0}
+	elif voronoi_type == 'N_SPHERE_RADIUS':
+		socket_indices = {"Radius": 0}
+	else:
+		socket_indices = {
+			"Distance": 0,
+			"Color": 1,
+		}
+		if dimensions == "1d":
+			socket_indices["W"] = 2
+		else:
+			socket_indices["Position"] = 2
+			if dimensions == "4d":
+				socket_indices["W"] = 3
+
+
+	out_socket = socket_indices[socket.name]
+	'''
+	if not out_socket:
+		# corner case: there was a link to the node when it was set as 4d, 
+		# but if the node was then changed to 3d, the link still exists.
+		# the blender UI breaks because it doesn't show what will happen at
+		# that point, maybe submit a bug report in blender?
+		return None
+	'''
+	return { "expression": exp_list.push(n), "OutputIndex":out_socket }
+
 
 def exp_tex_checker(socket, exp_list):
 	if socket.node in cached_nodes:
@@ -1633,6 +1725,9 @@ def get_expression_inner(socket, exp_list):
 		return exp_tex_musgrave(socket, exp_list)
 	if node.type == 'TEX_NOISE':
 		return exp_tex_noise(socket, exp_list)
+	if node.type == 'TEX_VORONOI':
+		return exp_tex_voronoi(socket, exp_list)
+
 	# Add > Color
 	if node.type == 'BRIGHTCONTRAST':
 		return exp_bright_contrast(node, exp_list)
