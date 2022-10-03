@@ -132,6 +132,60 @@ def exp_tex_gradient(socket, exp_list):
 
 	return { "expression": exp_list.push(n), "OutputIndex":out_socket }
 
+def exp_tex_image(socket, exp_list):
+	cached_node = None
+	node = socket.node
+	# we specially cache this in reverse_expressions by node (and not by socket)
+	# so we reuse the node when we find connections to the alpha socket
+	# this shouldn't be needed if we moved the whole reverse_expressions logic
+	# to happen with both nodes and sockets at the same time (in the future maybe)
+	if node in reverse_expressions:
+		cached_node = reverse_expressions[node]
+
+	if cached_node == None:
+		image = node.image
+		if not image:
+			return { "expression": exp_scalar(0, exp_list) }
+
+
+		# we skip warnings for this get_expression call because it is very common to be disconnected
+		# in that case, we export it as disconnected to unreal too, which uses the default UV channel
+		# by default.
+		tex_coord = get_expression(node.inputs['Vector'], exp_list, skip_default_warn=True)
+
+
+		name = ""
+		if image:
+			name = sanitize_name(image.name) # name_full?
+
+			# ensure that texture is exported
+			texture_type = get_context() or 'SRGB'
+			get_or_create_texture(name, image, texture_type)
+		texture_exp = exp_texture(name)
+		if tex_coord:
+			if node.projection == 'BOX':
+				proj = Node("FunctionCall", { "Function": "/DatasmithBlenderContent/MaterialFunctions/TexCoord_Box"})
+				proj.push(exp_input("0", tex_coord))
+				mask_expression = { "expression": exp_list.push(proj) }
+				texture_exp.push(Node("Coordinates", mask_expression))
+			else:
+				if node.projection != 'FLAT':
+					log.error("node TEXTURE_COORDINATE has unhandled projection: %s" % node.projection)
+				mask = Node("ComponentMask")
+				mask.push(exp_input("0", tex_coord))
+				mask_expression = { "expression": exp_list.push(mask) }
+				texture_exp.push(Node("Coordinates", mask_expression))
+
+		cached_node = exp_list.push(texture_exp)
+		reverse_expressions[node] = cached_node
+
+	output_index = 0 # RGB
+	# indices 1, 2, 3 are separate RGB channels in unreal
+	if socket.name == 'Alpha':
+		output_index = 4 #
+
+	return { "expression": cached_node, "OutputIndex": output_index }
+
 
 tex_dimensions_map = {
 	'1D': '1d',
@@ -1685,57 +1739,8 @@ def get_expression_inner(socket, exp_list):
 
 
 	if node.type == 'TEX_IMAGE':
-		cached_node = None
-		# we specially cache this in reverse_expressions by node (and not by socket)
-		# so we reuse the node when we find connections to the alpha socket
-		# this shouldn't be needed if we moved the whole reverse_expressions logic
-		# to happen with both nodes and sockets at the same time (in the future maybe)
-		if node in reverse_expressions:
-			cached_node = reverse_expressions[node]
-
-		if not cached_node:
-			image = node.image
-			if not image:
-				return { "expression": exp_scalar(0, exp_list) }
-
-
-			# we skip warnings for this get_expression call because it is very common to be disconnected
-			# in that case, we export it as disconnected to unreal too, which uses the default UV channel
-			# by default.
-			tex_coord = get_expression(node.inputs['Vector'], exp_list, skip_default_warn=True)
-
-
-			name = ""
-			if image:
-				name = sanitize_name(image.name) # name_full?
-
-				# ensure that texture is exported
-				texture_type = get_context() or 'SRGB'
-				get_or_create_texture(name, image, texture_type)
-			texture_exp = exp_texture(name)
-			if tex_coord:
-				if node.projection == 'BOX':
-					proj = Node("FunctionCall", { "Function": "/DatasmithBlenderContent/MaterialFunctions/TexCoord_Box"})
-					proj.push(exp_input("0", tex_coord))
-					mask_expression = { "expression": exp_list.push(proj) }
-					texture_exp.push(Node("Coordinates", mask_expression))
-				else:
-					if node.projection != 'FLAT':
-						log.error("node TEXTURE_COORDINATE has unhandled projection: %s" % node.projection)
-					mask = Node("ComponentMask")
-					mask.push(exp_input("0", tex_coord))
-					mask_expression = { "expression": exp_list.push(mask) }
-					texture_exp.push(Node("Coordinates", mask_expression))
-
-			cached_node = exp_list.push(texture_exp)
-			reverse_expressions[node] = cached_node
-
-		output_index = 0 # RGB
-		# indices 1, 2, 3 are separate RGB channels
-		if socket.name == 'Alpha':
-			output_index = 4 #
-
-		return { "expression": cached_node, "OutputIndex": output_index }
+		return exp_tex_image(socket, exp_list)
+		
 
 	if node.type == 'TEX_MUSGRAVE':
 		return exp_tex_musgrave(socket, exp_list)
