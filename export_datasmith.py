@@ -19,12 +19,26 @@ log = logging.getLogger("bl_datasmith")
 # these are to track the messages, printing to the console a full message, but not leaking 
 # user info when generating telemetry reports
 
-def report_warn(message, user_info = None):
+reported_warns = set()
+reported_errors = set()
+
+def report_warn(message, user_info = None, once=False):
+	if once:
+		if message in reported_warns:
+			return
+		reported_warns.add(message)
+
 	if user_info:
 		log.warn(message % user_info)
 	else:
 		log.warn(message)
-def report_error(message, user_info = None):
+
+def report_error(message, user_info = None, once=True):
+	if once:
+		if message in reported_errors:
+			return
+		reported_errors.add(message)
+
 	if user_info:
 		log.error(message % user_info)
 	else:
@@ -1234,7 +1248,7 @@ def exp_bump(node, exp_list):
 	bump_node.push(exp_input("0", image_object))
 	bump_node.push(exp_input("1", get_expression(node.inputs['Strength'], exp_list)))
 	bump_node.push(exp_input("2", get_expression(node.inputs['Distance'], exp_list)))
-	bump_node.push(exp_input("3", get_expression(from_node.inputs['Vector'], exp_list)))
+	bump_node.push(exp_input("3", get_expression(from_node.inputs['Vector'], exp_list, skip_default_warn=True)))
 	exp = exp_list.push(bump_node)
 	return {"expression": exp}
 
@@ -1482,7 +1496,7 @@ def get_expression_inner(socket, exp_list):
 			bsdf["EmissiveColor"] = get_expression(emission_field, exp_list)
 
 	if node.type == 'EEVEE_SPECULAR':
-		log.warn("EEVEE_SPECULAR incomplete implementation")
+		report_warn("EEVEE_SPECULAR incomplete implementation", once=True)
 		bsdf = {
 			"BaseColor": get_expression(node.inputs['Base Color'], exp_list),
 			"Roughness": get_expression(node.inputs['Roughness'], exp_list),
@@ -1495,7 +1509,7 @@ def get_expression_inner(socket, exp_list):
 			"Metallic": {"expression": exp_scalar(0.0, exp_list)},
 		}
 	elif node.type == 'BSDF_TOON':
-		log.warn("BSDF_TOON incomplete implementation")
+		report_warn("BSDF_TOON incomplete implementation", once=True)
 		bsdf = {
 			"BaseColor": get_expression(node.inputs['Color'], exp_list),
 			"Roughness": {"expression": exp_scalar(1.0, exp_list)},
@@ -1508,25 +1522,25 @@ def get_expression_inner(socket, exp_list):
 			"Metallic": {"expression": exp_scalar(1.0, exp_list)},
 		}
 	elif node.type == 'BSDF_VELVET':
-		log.warn("BSDF_VELVET incomplete implementation")
+		report_warn("BSDF_VELVET incomplete implementation", once=True)
 		bsdf = {
 			"BaseColor": get_expression(node.inputs['Color'], exp_list),
 			"Roughness": {"expression": exp_scalar(1.0, exp_list)},
 		}
 	elif node.type == 'BSDF_TRANSPARENT':
-		log.warn("BSDF_TRANSPARENT incomplete implementation")
+		report_warn("BSDF_TRANSPARENT incomplete implementation", once=True)
 		bsdf = {
 			"BaseColor": get_expression(node.inputs['Color'], exp_list),
 			"Refraction": {"expression": exp_scalar(1.0, exp_list)},
 			"Opacity": {"expression": exp_scalar(0.0, exp_list)},
 		}
 	elif node.type == 'BSDF_TRANSLUCENT':
-		log.warn("BSDF_TRANSLUCENT incomplete implementation")
+		report_warn("BSDF_TRANSLUCENT incomplete implementation", once=True)
 		bsdf = {
 			"BaseColor": get_expression(node.inputs['Color'], exp_list),
 		}
 	elif node.type == 'BSDF_GLASS':
-		log.warn("BSDF_GLASS incomplete implementation")
+		report_warn("BSDF_GLASS incomplete implementation", once=True)
 		bsdf = {
 			"BaseColor": get_expression(node.inputs['Color'], exp_list),
 			"Metallic": { "expression": exp_scalar(1, exp_list) },
@@ -1535,18 +1549,18 @@ def get_expression_inner(socket, exp_list):
 			"Opacity": {"expression": exp_scalar(0.5, exp_list)},
 		}
 	elif node.type == 'BSDF_HAIR':
-		log.warn("BSDF_HAIR incomplete implementation")
+		report_warn("BSDF_HAIR incomplete implementation", once=True)
 		bsdf = {
 			"BaseColor": get_expression(node.inputs['Color'], exp_list),
 			"Roughness": {"expression": exp_scalar(0.5, exp_list)},
 		}
 	elif node.type == 'SUBSURFACE_SCATTERING':
-		log.warn("node SUBSURFACE_SCATTERING incomplete implementation")
+		report_warn("node SUBSURFACE_SCATTERING incomplete implementation", once=True)
 		bsdf = {
 			"BaseColor": get_expression(node.inputs['Color'], exp_list)
 		}
 	elif node.type == 'BSDF_REFRACTION':
-		log.warn("BSDF_REFRACTION incomplete implementation")
+		report_warn("BSDF_REFRACTION incomplete implementation", once=True)
 		bsdf = {
 			"BaseColor": get_expression(node.inputs['Color'], exp_list),
 			"Roughness": get_expression(node.inputs['Roughness'], exp_list),
@@ -1554,7 +1568,7 @@ def get_expression_inner(socket, exp_list):
 			"Opacity": {"expression": exp_scalar(0.5, exp_list)},
 		}
 	elif node.type == 'BSDF_ANISOTROPIC':
-		log.warn("BSDF_ANISOTROPIC incomplete implementation")
+		report_warn("BSDF_ANISOTROPIC incomplete implementation", once=True)
 		bsdf = {
 			"BaseColor": get_expression(node.inputs['Color'], exp_list),
 			"Roughness": get_expression(node.inputs['Roughness'], exp_list),
@@ -2989,10 +3003,10 @@ def fill_obj_empty(obj_dict, target):
 	pass
 
 def fill_obj_unknown(obj_dict, target):
-	log.error("Invalid object type: %s" % target.type)
+	report_error("Invalid object type: %s" % target.type, once=True)
 
 def fill_obj_unsupported(obj_dict, target):
-	log.warn("Unsupported object type: %s" % target.type)
+	report_warn("Unsupported object type: %s" % target.type, once=True)
 
 obj_fill_funcs = {
 	'EMPTY':       fill_obj_empty,
