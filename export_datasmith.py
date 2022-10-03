@@ -806,7 +806,7 @@ def exp_hsv(node, exp_list):
 
 
 def exp_input(input_idx, expression, output_idx = 0):
-	expression_idx = expression
+	expression_idx = -1
 	if type(expression) is dict:
 		if "expression" not in expression:
 			log.error(expression)
@@ -814,13 +814,16 @@ def exp_input(input_idx, expression, output_idx = 0):
 		output_idx = expression.get("OutputIndex", 0)
 	elif type(expression) is tuple:
 		expression_idx, output_idx = expression
-	elif expression == None:
-		report_error("trying to use expression=None for input for another expression")
-		expression_idx = -1
-	else: # if expression is single value
+	elif expression:
 		assert type(expression) == int
 		expression_idx = expression
 		# output_idx = 0 # already set as default value
+
+	# TODO: find loose ends by enabling this error
+	# or change this function to receive the parent node as parameter
+	# and early exit if expression is None
+	#if expression_idx == -1:
+	#	report_error("trying to use expression=None for input for another expression")
 
 	return '\n\t\t\t\t<Input Name="%s" expression="%s" OutputIndex="%s"/>' % (input_idx, expression_idx, output_idx)
 
