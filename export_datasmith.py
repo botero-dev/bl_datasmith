@@ -146,6 +146,10 @@ def exp_tex_gradient(socket, exp_list):
 
 	return { "expression": exp_list.push(n), "OutputIndex":out_socket }
 
+VEC_ZERO = Vector()
+ROT_ZERO = Euler()
+VEC_ONE = Vector((1,1,1))
+
 def exp_tex_image(socket, exp_list):
 	cached_node = None
 	node = socket.node
@@ -167,6 +171,16 @@ def exp_tex_image(socket, exp_list):
 		# by default.
 		tex_coord = get_expression(node.inputs['Vector'], exp_list, skip_default_warn=True)
 
+		# there is this secret menu to the right in TEX_IMAGE nodes that
+		# consists in a mapping node + axis reprojection
+		mapping = node.texture_mapping
+		mapping_axes = (mapping.mapping_x, mapping.mapping_y, mapping.mapping_z)
+		if mapping_axes != ('X', 'Y', 'Z'):
+			report_warn("USING NONSTANDARD MAPPING PROJECTION!")
+
+		tx_loc, tx_rot, tx_scale = (mapping.translation, mapping.rotation, mapping.scale)
+		if tx_loc != VEC_ZERO or tx_rot != ROT_ZERO or tx_scale != VEC_ONE:
+			report_warn("USING NONSTANDARD MAPPING TRANSFORM!")
 
 		name = ""
 		if image:
