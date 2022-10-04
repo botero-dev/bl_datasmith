@@ -1261,39 +1261,46 @@ def exp_bump(node, exp_list):
 group_context = {}
 def exp_group(socket, exp_list):
 	node = socket.node
+	node_tree = node.node_tree
+
 	global group_context
 	global reverse_expressions
 	global cached_nodes
-	new_context = {}
-	new_cached_nodes = {}
-	for input in node.inputs:
-		new_context[input.name] = get_expression(input, exp_list)
 
+	# store previous global state
 	previous_reverse = reverse_expressions
-	reverse_expressions = {}
 	previous_context = group_context
 	previous_cached_nodes = cached_nodes
+
+	# capture group inputs to serve them to the group nodes
+	new_context = {}
+	# TODO: handle case where there are many inputs with same name.
+	for input in node.inputs:
+		input_spec = node_tree.inputs[input.name]
+		
+		value_hidden = input_spec.hide_value
+		value_has_links = len(input.links) > 0
+		value_exp = get_expression(input, exp_list, force_default=True)
+		new_context[input.name] = (value_exp, value_hidden, value_has_links)
+
 	group_context = new_context
-	cached_nodes = new_cached_nodes
+	reverse_expressions = {}
+	cached_nodes = {}
 
-	# now traverse the inner graph
-	output_name = socket.name
-
-	node_tree = node.node_tree
-	log.debug("%sGROUP:%s" % (
-		expression_log_prefix,
-		node_tree.name,
-	))
-
-	# search for active output node:
+	# search for active output node inside the group node_tree:
 	output_node = None
 	for node in node_tree.nodes:
 		if type(node) == bpy.types.NodeGroupOutput:
 			if node.is_active_output or output_node is None:
 				output_node = node
 
-	# TODO: handle case when output_node is None
+	if not output_node:
+		report_error("group does not have output node!")
 
+	# now traverse the inner graph 
+	# TODO: test what happens if there are multiple outputs with same name?
+	# maybe find by index better?
+	output_name = socket.name
 	inner_socket = output_node.inputs[output_name]
 	inner_exp = get_expression(inner_socket, exp_list)
 
@@ -1302,8 +1309,17 @@ def exp_group(socket, exp_list):
 	reverse_expressions = previous_reverse
 	return inner_exp
 
-def exp_group_input(socket, exp_list):
-	outer_expression = group_context[socket.name]
+def exp_group_input(socket, exp_list, target_socket):
+	outer_expression_data = group_context[socket.name]
+	# if the node inside the group is something like a TEX_IMAGE, and it is
+	# connected to a group input that is disconnected in the outside, don't
+	# use the group default values, matching what Blender does in this case.
+	if type(target_socket) == bpy.types.NodeSocketVector:
+		if type(target_socket.default_value) == bpy.types.bpy_prop_array:
+			value_has_links = outer_expression_data[2]
+			if not value_has_links:
+				return None
+	outer_expression = outer_expression_data[0]
 	return outer_expression
 
 def exp_ambient_occlusion(socket, exp_list):
@@ -1384,6 +1400,12 @@ def get_expression(field, exp_list, force_default=False, skip_default_warn=False
 			return {"expression": exp, "OutputIndex": 0}
 		elif field.type == 'VECTOR':
 			use_vector_default = force_default or type(field.default_value) in {Vector, Euler}
+			# here, we're specifically disarding when the field type is
+			# bpy.types.bpy_prop_array. we do that because when that happens,
+			# most of the time it is because this socket default value is a
+			# custom expression, an example is TEX_IMAGE nodes that by
+			# default use the main UV channel if not connected, while
+			# TEX_NOISE use TEXCOORD_GENERATED values by default.
 			if use_vector_default:
 				exp = exp_vector(field.default_value, exp_list)
 				return {"expression": exp, "OutputIndex": 0}
@@ -1403,7 +1425,7 @@ def get_expression(field, exp_list, force_default=False, skip_default_warn=False
 	expression_log_prefix += "|   "
 
 	socket = field.links[0].from_socket
-	return_exp = get_expression_inner(socket, exp_list)
+	return_exp = get_expression_inner(socket, exp_list, field)
 	expression_log_prefix = prev_prefix
 
 	reverse_expressions[socket] = return_exp
@@ -1439,7 +1461,7 @@ def get_expression(field, exp_list, force_default=False, skip_default_warn=False
 
 
 
-def get_expression_inner(socket, exp_list):
+def get_expression_inner(socket, exp_list, target_socket):
 	node = socket.node
 
 	# if this node is already exported, connect to that instead
@@ -1458,7 +1480,7 @@ def get_expression_inner(socket, exp_list):
 		return exp_group(socket, exp_list)# TODO node trees can have multiple outputs
 
 	if node.type == 'GROUP_INPUT':
-		return exp_group_input(socket, exp_list)
+		return exp_group_input(socket, exp_list, target_socket)
 
 	if node.type == 'REROUTE':
 		return get_expression(node.inputs['Input'], exp_list)
