@@ -873,6 +873,12 @@ def exp_hsv(node, exp_list):
 	return exp_list.push(n)
 
 
+# convenience function to skip adding an input if the input is None
+def push_exp_input(node, input_idx, expression, output_idx = 0):
+	if expression:
+		node.push(exp_input(input_idx, expression, output_idx))
+
+
 def exp_input(input_idx, expression, output_idx = 0):
 	expression_idx = -1
 	if type(expression) is dict:
@@ -1221,36 +1227,21 @@ def exp_texture_object(name, exp_list):
 	}))
 	return exp_list.push(n)
 
+MAT_FUNC_BUMP = "/DatasmithBlenderContent/MaterialFunctions/Bump"
 
 def exp_bump(node, exp_list):
-	height_input = node.inputs['Height']
-	if not height_input.links:
-		log.warn("trying to export bump node without connections")
-		return
-	
-	from_node = height_input.links[0].from_node
-	if from_node.type != 'TEX_IMAGE':
-		log.warn("trying to export bump node, but input is not an image")
-		return
-	
-	image = from_node.image
-	if not image:
-		log.warn("trying to export bump node, but input image node doesn't have an image")
-		return
-		
-	name = sanitize_name(image.name)
+	print("using ")
+	bump_node = Node("FunctionCall", { "Function": MAT_FUNC_BUMP })
 
-	# ensure that texture is exported
-	get_or_create_texture(name, image)
+	exp_invert = exp_scalar(-1 if node.invert else 1, exp_list)
+	push_exp_input(bump_node, "0", exp_invert)
 
-	image_object = exp_texture_object(name, exp_list)
-	bump_node = Node("FunctionCall", { "Function": op_custom_functions["NORMAL_FROM_HEIGHT"]})
-	bump_node.push(exp_input("0", image_object))
-	bump_node.push(exp_input("1", get_expression(node.inputs['Strength'], exp_list)))
-	bump_node.push(exp_input("2", get_expression(node.inputs['Distance'], exp_list)))
-	bump_node.push(exp_input("3", get_expression(from_node.inputs['Vector'], exp_list, skip_default_warn=True)))
-	exp = exp_list.push(bump_node)
-	return {"expression": exp}
+	inputs = node.inputs
+	push_exp_input(bump_node, "1", get_expression(inputs["Strength"], exp_list))
+	push_exp_input(bump_node, "2", get_expression(inputs["Distance"], exp_list))
+	push_exp_input(bump_node, "3", get_expression(inputs["Height"], exp_list))
+	push_exp_input(bump_node, "4", get_expression(inputs["Normal"], exp_list, skip_default_warn=True))
+	return {"expression": exp_list.push(bump_node)}
 
 
 group_context = {}
