@@ -494,7 +494,6 @@ def exp_tex_checker(socket, exp_list):
 			"/DatasmithBlenderContent/MaterialFunctions/TexChecker",
 			exp_list=exp_list,
 			inputs=socket.node.inputs,
-			force_default=True,
 		)
 		cached_nodes[socket.node] = exp["expression"]
 
