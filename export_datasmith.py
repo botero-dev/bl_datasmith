@@ -224,8 +224,26 @@ def exp_tex_image(socket, exp_list):
 		if tx_loc != VEC_ZERO or tx_rot != ROT_ZERO or tx_scale != VEC_ONE:
 			if not tex_coord:
 				tex_coord = exp_texcoord(exp_list)
-			report_warn("USING NONSTANDARD MAPPING TRANSFORM!")
 
+			mapping_func = {
+				'NORMAL':  MAT_FUNC_MAPPING_NORMAL,
+				'POINT':   MAT_FUNC_MAPPING_POINT,
+				'TEXTURE': MAT_FUNC_MAPPING_TEX,
+				'VECTOR':  MAT_FUNC_MAPPING_VECTOR,
+			}[mapping.vector_type]
+
+			if mapping.vector_type in ('NORMAL', 'TEXTURE'):
+				report_warn("Unreal importer doesn't handle MAPPING:%s correctly" % mapping.vector_type)
+			
+			n = Node("FunctionCall", { "Function": mapping_func })
+
+			push_exp_input(n, "0", tex_coord)
+			push_exp_input(n, "1", exp_vector(tx_loc, exp_list))
+			push_exp_input(n, "2", exp_vector(tx_rot, exp_list))
+			push_exp_input(n, "3", exp_vector(tx_scale, exp_list))
+
+			tex_coord = {"expression": exp_list.push(n)}
+			
 
 		tex_coord_exp = None
 		if tex_coord:
