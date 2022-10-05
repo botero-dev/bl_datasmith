@@ -911,6 +911,11 @@ def exp_mixrgb(node, exp_list):
 
 	return exp_list.push(lerp)
 
+MAT_FUNC_MAPPING_NORMAL = "/DatasmithBlenderContent/MaterialFunctions/MappingNormal"
+MAT_FUNC_MAPPING_POINT =  "/DatasmithBlenderContent/MaterialFunctions/MappingPoint3D"
+MAT_FUNC_MAPPING_TEX =    "/DatasmithBlenderContent/MaterialFunctions/MappingTexture3D"
+MAT_FUNC_MAPPING_VECTOR = "/DatasmithBlenderContent/MaterialFunctions/MappingVector"
+
 op_custom_functions = {
 	"BRIGHTCONTRAST":     "/DatasmithBlenderContent/MaterialFunctions/BrightContrast",
 	"COLOR_RAMP":         "/DatasmithBlenderContent/MaterialFunctions/ColorRamp",
@@ -920,10 +925,10 @@ op_custom_functions = {
 	"LAYER_WEIGHT":       "/DatasmithBlenderContent/MaterialFunctions/LayerWeight",
 	"LOCAL_POSITION":     "/DatasmithBlenderContent/MaterialFunctions/BlenderLocalPosition",
 	"MAPPING_POINT2D":    "/DatasmithBlenderContent/MaterialFunctions/MappingPoint2D_2",
-	"MAPPING_POINT3D":    "/DatasmithBlenderContent/MaterialFunctions/MappingPoint3D",
+	"MAPPING_POINT3D":    MAT_FUNC_MAPPING_POINT,
 	"MAPPING_TEX2D":      "/DatasmithBlenderContent/MaterialFunctions/MappingTexture2D_2",
-	"MAPPING_TEX3D":      "/DatasmithBlenderContent/MaterialFunctions/MappingTexture3D",
-	"MAPPING_NORMAL":     "/DatasmithBlenderContent/MaterialFunctions/MappingNormal",
+	"MAPPING_TEX3D":      MAT_FUNC_MAPPING_TEX,
+	"MAPPING_NORMAL":     MAT_FUNC_MAPPING_NORMAL,
 	"NORMAL_FROM_HEIGHT": "/Engine/Functions/Engine_MaterialFunctions03/Procedurals/NormalFromHeightmap",
 	"WORLD_POSITION":     "/DatasmithBlenderContent/MaterialFunctions/BlenderWorldPosition",
 }
