@@ -514,6 +514,25 @@ def exp_uvmap(node, exp_list):
 				uv_index = idx
 	return exp_texcoord(exp_list, uv_index)
 
+def exp_value(socket, exp_list):
+	node_value = socket.default_value
+	n = Node("Scalar", {
+		"constant": "%f" % node_value,
+	})
+	if socket.node.label:
+		n["Name"] = socket.node.label
+	return {"expression": exp_list.push(n) }
+
+def exp_rgb(socket, exp_list):
+	node_value = socket.default_value
+	n = Node("Color", {
+		"constant": "(R=%.6f,G=%.6f,B=%.6f,A=%.6f)"%tuple(node_value)
+		})
+	
+	if socket.node.label:
+		n["Name"] = socket.node.label
+	return {"expression": exp_list.push(n) }
+
 # instead of setting coordinates here, use coordinates when creating
 # the texture expression instead
 def exp_texture(path, name=None): # , tex_coord_exp):
@@ -1823,8 +1842,8 @@ def get_expression_inner(socket, exp_list, target_socket):
 	# if node.type == 'PARTICLE_INFO':
 
 	if node.type == 'RGB':
-		exp = exp_color(node.outputs[0].default_value, exp_list)
-		return {"expression": exp, "OutputIndex": 0}
+		return exp_rgb(socket, exp_list)
+		
 
 	# if node.type == 'TANGENT':
 	if node.type == 'TEX_COORD':
@@ -1835,8 +1854,8 @@ def get_expression_inner(socket, exp_list, target_socket):
 	if node.type == 'UVMAP':
 		return exp_uvmap(node, exp_list)
 	if node.type == 'VALUE':
-		exp = exp_scalar(node.outputs[0].default_value, exp_list)
-		return {"expression": exp}
+		return exp_value(socket, exp_list)
+		
 	# if node.type == 'WIREFRAME':
 
 
