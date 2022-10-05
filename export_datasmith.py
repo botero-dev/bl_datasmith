@@ -86,14 +86,29 @@ def exp_scalar(value, exp_list):
 		})
 	return exp_list.push(n)
 
+# if we flip the Y axis of the UVs when first querying them, and then flip it
+# back right before we are going to use it in a sampler node, we match more
+# accurately what blender does under the hood
+USE_TEXCOORD_FLIPY = True
+# This has a cost, so we should definitely make it a tunable in the plugin
+
+MAT_FUNC_FLIPY = "/DatasmithBlenderContent/MaterialFunctions/FlipY"
+
 def exp_texcoord(exp_list, index=0, u_tiling=1.0, v_tiling=1.0):
 	uv = Node("TextureCoordinate")
 	uv["Index"] = index
 	uv["UTiling"] = u_tiling
 	uv["VTiling"] = v_tiling
 
+	exp_uv = exp_list.push(uv)
+
+	if USE_TEXCOORD_FLIPY:
+		flip = Node("FunctionCall", { "Function": MAT_FUNC_FLIPY })
+		push_exp_input(flip, "0", exp_uv)
+		exp_uv = exp_list.push(flip)
+
 	pad = Node("AppendVector")
-	push_exp_input(pad, "0", exp_list.push(uv) )
+	push_exp_input(pad, "0", exp_uv)
 	push_exp_input(pad, "1", exp_scalar(0, exp_list) )
 	return {"expression": exp_list.push(pad) }
 
@@ -149,6 +164,8 @@ VEC_ZERO = Vector()
 ROT_ZERO = Euler()
 VEC_ONE = Vector((1,1,1))
 
+
+
 def exp_tex_image(socket, exp_list):
 	cached_node = None
 	node = socket.node
@@ -186,11 +203,27 @@ def exp_tex_image(socket, exp_list):
 		# consists in a mapping node + axis reprojection
 		mapping = node.texture_mapping
 		mapping_axes = (mapping.mapping_x, mapping.mapping_y, mapping.mapping_z)
-		if mapping_axes != ('X', 'Y', 'Z'):
-			report_warn("USING NONSTANDARD MAPPING PROJECTION!")
+		base_axes = ('X', 'Y', 'Z')
+		if mapping_axes != base_axes:
+			if not tex_coord:
+				tex_coord = exp_texcoord(exp_list)
+			
+			node_break = Node("FunctionCall", { "Function": MAT_FUNC_BREAK_FLOAT3 } )
+			push_exp_input(node_break, "0", tex_coord)
+			node_break_exp = exp_list.push(node_break)
+			
+			node_make = Node("FunctionCall", { "Function": MAT_FUNC_MAKE_FLOAT3 } )
+			for idx in range(3):
+				if mapping_axes[idx] in base_axes:
+					target_idx = base_axes.index(mapping_axes[idx])
+					push_exp_input(node_make, idx, (node_break_exp, target_idx))
 
+			tex_coord = {"expression": exp_list.push(node_make)}
+		
 		tx_loc, tx_rot, tx_scale = (mapping.translation, mapping.rotation, mapping.scale)
 		if tx_loc != VEC_ZERO or tx_rot != ROT_ZERO or tx_scale != VEC_ONE:
+			if not tex_coord:
+				tex_coord = exp_texcoord(exp_list)
 			report_warn("USING NONSTANDARD MAPPING TRANSFORM!")
 
 
@@ -209,6 +242,13 @@ def exp_tex_image(socket, exp_list):
 
 
 		if tex_coord_exp:
+
+			if USE_TEXCOORD_FLIPY:
+				flip = Node("FunctionCall", { "Function": MAT_FUNC_FLIPY })
+				push_exp_input(flip, "0", tex_coord_exp)
+				tex_coord_exp = {"expression": exp_list.push(flip)}
+
+
 			texture_exp.push(Node("Coordinates", tex_coord_exp))
 
 		cached_node = exp_list.push(texture_exp)
@@ -476,9 +516,10 @@ def exp_rgb_to_bw(socket, exp_list):
 	dot_exp = exp_list.push(n)
 	return { "expression": dot_exp }
 
+MAT_FUNC_MAKE_FLOAT3 = "/Engine/Functions/Engine_MaterialFunctions02/Utility/MakeFloat3"
 def exp_make_vec3(socket, exp_list):
 	node = socket.node
-	output = Node("FunctionCall", { "Function": "/Engine/Functions/Engine_MaterialFunctions02/Utility/MakeFloat3" })
+	output = Node("FunctionCall", { "Function": MAT_FUNC_MAKE_FLOAT3 })
 	output.push(exp_input("0", get_expression(node.inputs[0], exp_list)))
 	output.push(exp_input("1", get_expression(node.inputs[1], exp_list)))
 	output.push(exp_input("2", get_expression(node.inputs[2], exp_list)))
@@ -490,12 +531,14 @@ def exp_make_hsv(socket, exp_list):
 	output.push(exp_input("0", vec3_input))
 	return { "expression": exp_list.push(output) }
 
+
+MAT_FUNC_BREAK_FLOAT3 = "/Engine/Functions/Engine_MaterialFunctions02/Utility/BreakOutFloat3Components"
 def exp_break_vec3(socket, exp_list):
 	expression_idx = -1
 	if socket.node in cached_nodes:
 		expression_idx = cached_nodes[socket.node]
 	else:
-		output = Node("FunctionCall",  { "Function": "/Engine/Functions/Engine_MaterialFunctions02/Utility/BreakOutFloat3Components" })
+		output = Node("FunctionCall",  { "Function": MAT_FUNC_BREAK_FLOAT3 })
 		output.push(exp_input("0", get_expression(socket.node.inputs[0], exp_list)))
 		expression_idx = exp_list.push(output)
 		cached_nodes[socket.node] = expression_idx
@@ -512,7 +555,7 @@ def exp_break_hsv(socket, exp_list):
 		input = Node("FunctionCall",  { "Function": "/DatasmithBlenderContent/MaterialFunctions/RGB_To_HSV" })
 		hsv_expression_idx = input.push(exp_input("0", get_expression(socket.node.inputs[0], exp_list)))
 
-		output = Node("FunctionCall",  { "Function": "/Engine/Functions/Engine_MaterialFunctions02/Utility/BreakOutFloat3Components" })
+		output = Node("FunctionCall",  { "Function": MAT_FUNC_BREAK_FLOAT3 })
 		output.push(exp_input("0", hsv_expression_idx ))
 		expression_idx = exp_list.push(output)
 		cached_nodes[socket.node] = expression_idx
