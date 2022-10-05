@@ -33,7 +33,7 @@ def report_warn(message, user_info = None, once=False):
 	else:
 		log.warn(message)
 
-def report_error(message, user_info = None, once=True):
+def report_error(message, user_info = None, once=False):
 	if once:
 		if message in reported_errors:
 			return
@@ -131,7 +131,6 @@ def exp_texcoord_node(socket, exp_list):
 	#	seems to be viewport coordinates
 	# if socket_name == "Reflection":
 	#	direction of reflection in world coordinates
-	log.warn("Texcoord node doesn't implement %s yet" % socket_name)
 
 
 tex_gradient_node_map = {
@@ -1102,7 +1101,6 @@ def exp_new_geometry(socket, exp_list):
 		exp = exp_scalar(0, exp_list)
 		return {"expression": exp}
 	# if socket_name == "Random Per Island":
-	log.error("Node NEW_GEOMETRY has unhanded socket:%s" % socket_name)
 
 
 def exp_layer_weight(socket, exp_list):
@@ -1131,7 +1129,7 @@ def exp_layer_weight(socket, exp_list):
 	return {"expression": expr, "OutputIndex": out_index}
 
 def exp_light_path(socket, exp_list):
-	log.warn("incomplete node implementation: LIGHT_PATH")
+	report_warn("LIGHT_PATH incomplete implementation", once=True)
 	n = exp_scalar(1, exp_list)
 	return {"expression": n}
 
@@ -1673,7 +1671,7 @@ def get_expression_inner(socket, exp_list, target_socket):
 			"Roughness": {"expression": exp_scalar(0.5, exp_list)},
 		}
 	elif node.type == 'SUBSURFACE_SCATTERING':
-		report_warn("node SUBSURFACE_SCATTERING incomplete implementation", once=True)
+		report_warn("SUBSURFACE_SCATTERING incomplete implementation", once=True)
 		bsdf = {
 			"BaseColor": get_expression(node.inputs['Color'], exp_list)
 		}
@@ -1960,7 +1958,7 @@ def get_expression_inner(socket, exp_list, target_socket):
 	# if node.type == 'SCRIPT':
 
 
-	log.error("node not handled" + node.type)
+	report_error("Node %s:%s not handled" % (node.type, socket.name))
 	exp = exp_scalar(0, exp_list)
 	return {"expression": exp}
 
