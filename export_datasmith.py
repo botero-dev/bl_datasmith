@@ -87,15 +87,14 @@ def exp_scalar(value, exp_list):
 	return exp_list.push(n)
 
 def exp_texcoord(exp_list, index=0, u_tiling=1.0, v_tiling=1.0):
-	n = Node("TextureCoordinate")
-	n["Index"] = index
-	n["UTiling"] = u_tiling
-	n["VTiling"] = v_tiling
+	uv = Node("TextureCoordinate")
+	uv["Index"] = index
+	uv["UTiling"] = u_tiling
+	uv["VTiling"] = v_tiling
 
 	pad = Node("AppendVector")
-	pad.push(exp_input("0", exp_list.push(n) ))
-	zero = exp_scalar(0, exp_list)
-	pad.push(exp_input("1", zero ))
+	push_exp_input(pad, "0", exp_list.push(uv) )
+	push_exp_input(pad, "1", exp_scalar(0, exp_list) )
 	return {"expression": exp_list.push(pad) }
 
 
@@ -165,11 +164,23 @@ def exp_tex_image(socket, exp_list):
 		if not image:
 			return { "expression": exp_scalar(0, exp_list) }
 
+		name = sanitize_name(image.name) # name_full?
 
-		# we skip warnings for this get_expression call because it is very common to be disconnected
-		# in that case, we export it as disconnected to unreal too, which uses the default UV channel
-		# by default.
+		# we use this to know if this texture is behind a normalmap node, so
+		# we mark it as non-sRGB+invert green channel
+		texture_type = get_context() or 'SRGB' 
+
+		# ensure that texture is exported
+		get_or_create_texture(name, image, texture_type)
+
+		texture_exp = exp_texture(name)
+
+		# we skip warnings for this get_expression call because it is very
+		# common to be disconnected in that case, we export it as
+		# disconnected to unreal too, which uses the default UV channel by
+		# default.
 		tex_coord = get_expression(node.inputs['Vector'], exp_list, skip_default_warn=True)
+
 
 		# there is this secret menu to the right in TEX_IMAGE nodes that
 		# consists in a mapping node + axis reprojection
@@ -182,27 +193,23 @@ def exp_tex_image(socket, exp_list):
 		if tx_loc != VEC_ZERO or tx_rot != ROT_ZERO or tx_scale != VEC_ONE:
 			report_warn("USING NONSTANDARD MAPPING TRANSFORM!")
 
-		name = ""
-		if image:
-			name = sanitize_name(image.name) # name_full?
 
-			# ensure that texture is exported
-			texture_type = get_context() or 'SRGB'
-			get_or_create_texture(name, image, texture_type)
-		texture_exp = exp_texture(name)
+		tex_coord_exp = None
 		if tex_coord:
 			if node.projection == 'BOX':
 				proj = Node("FunctionCall", { "Function": "/DatasmithBlenderContent/MaterialFunctions/TexCoord_Box"})
 				proj.push(exp_input("0", tex_coord))
-				mask_expression = { "expression": exp_list.push(proj) }
-				texture_exp.push(Node("Coordinates", mask_expression))
-			else:
-				if node.projection != 'FLAT':
-					log.error("node TEXTURE_COORDINATE has unhandled projection: %s" % node.projection)
+				tex_coord_exp = { "expression": exp_list.push(proj) }
+			elif node.projection == 'FLAT':
 				mask = Node("ComponentMask")
 				mask.push(exp_input("0", tex_coord))
-				mask_expression = { "expression": exp_list.push(mask) }
-				texture_exp.push(Node("Coordinates", mask_expression))
+				tex_coord_exp = { "expression": exp_list.push(mask) }
+			else:
+				log.error("node TEXTURE_COORDINATE has unhandled projection: %s" % node.projection)
+
+
+		if tex_coord_exp:
+			texture_exp.push(Node("Coordinates", tex_coord_exp))
 
 		cached_node = exp_list.push(texture_exp)
 		reverse_expressions[node] = cached_node
@@ -889,7 +896,7 @@ def exp_hsv(node, exp_list):
 
 # convenience function to skip adding an input if the input is None
 def push_exp_input(node, input_idx, expression, output_idx = 0):
-	if expression:
+	if expression != None:
 		node.push(exp_input(input_idx, expression, output_idx))
 
 
@@ -902,7 +909,7 @@ def exp_input(input_idx, expression, output_idx = 0):
 		output_idx = expression.get("OutputIndex", 0)
 	elif type(expression) is tuple:
 		expression_idx, output_idx = expression
-	elif expression:
+	elif expression != None:
 		assert type(expression) == int
 		expression_idx = expression
 		# output_idx = 0 # already set as default value
