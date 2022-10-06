@@ -1339,7 +1339,6 @@ def exp_texture_object(name, exp_list):
 MAT_FUNC_BUMP = "/DatasmithBlenderContent/MaterialFunctions/Bump"
 
 def exp_bump(node, exp_list):
-	print("using ")
 	bump_node = Node("FunctionCall", { "Function": MAT_FUNC_BUMP })
 
 	exp_invert = exp_scalar(-1 if node.invert else 1, exp_list)
@@ -1973,6 +1972,7 @@ def get_expression_inner(socket, exp_list, target_socket):
 	return {"expression": exp}
 
 
+config_always_twosided = False
 material_hint_twosided = False
 # if we try to use textures that end up being connected to the normal input of
 # a material in UE, UE tries to be smart and flag them as normal maps, but
@@ -2069,15 +2069,41 @@ def pbr_nodetree_material(material):
 	for key, value in expressions.items():
 		n.push(Node(key, value))
 
-	# we wait until for all expressions to be evaluated, if any of them hinted usage
-	# of two sided, we set the flag.
-	if material_hint_twosided:
-		n.push('\n\t\t<TwoSided enabled="%s"/>' % material_hint_twosided)
+	can_be_twosided = True
 
-	# apparently this happens automatically, we may want to
-	# choose if we export with masked blend mode
-	#if "Opacity" in expressions:
-	#	n.push(Node("Blendmode", {"value": "2.0"}))
+	blend_method = material.blend_method
+	if blend_method == 'CLIP':
+		n.push('\n\t\t<Blendmode value="1"/>')
+		n.push('\n\t\t<OpacityMaskClipValue value="%f"/>' % max(material.alpha_threshold, 0.01))
+	#elif blend_method == 'HASHED': 
+	# maybe we can check this earlier and decide
+	# to push a temporal hash mask node in the material?
+	elif blend_method == 'BLEND':
+		n.push('\n\t\t<Blendmode value="2"/>')
+	else: 
+		# blend_method is only valid for Eevee, so we end up checking for
+		# Opacity in expressions to handle Cycles materials too. In this case
+		# we want to turn off two-sidedness because it matches better how the
+		# transparency works on cycles. and while we know that people sets
+		# this up for eevee, they don't do when setting a glass material in
+		# cycles for example
+
+		if "Opacity" in expressions:
+			can_be_twosided = False
+
+	if config_always_twosided:
+		if can_be_twosided:
+			material_hint_twosided = True
+
+	# we always want to skip two-sidedness if the user explicitly
+	# turned on backface culling
+	if material.use_backface_culling:
+		material_hint_twosided = False
+
+	# this flag is enabled if any material hinted for two-sidedness or if the
+	# material is opaque and the user set to always write two-sided mats
+	if material_hint_twosided or config_always_twosided:
+		n.push('\n\t\t<TwoSided enabled="True"/>')
 
 	return n
 
@@ -3751,6 +3777,8 @@ def collect_and_save(context, args, save_path):
 	export_animations = args["export_animations"]
 	use_old_iterator = args["use_old_iterator"]
 	use_instanced_meshes = args["use_instanced_meshes"]
+	global config_always_twosided
+	config_always_twosided = args["always_twosided"]
 
 	objects = []
 	obj_output = ""

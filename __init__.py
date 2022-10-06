@@ -60,6 +60,13 @@ class ExportDatasmith(bpy.types.Operator, ExportHelper):
 				"(This may break mesh instancing)",
 			default=True,
 		)
+	always_twosided: BoolProperty(
+			name="All materials as two-sided",
+			description="Adds a flag to all materials to export as two-sided.\n "
+				"This is less optimal but matches better Blender's default behaviour.\n"
+				"Materials with Backface Culling are exported one-sided",
+			default=True,
+		)
 	export_animations: BoolProperty(
 			name="Export animations",
 			description="Export object animations (transforms only)",
