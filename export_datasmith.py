@@ -12,6 +12,7 @@ import shutil
 from os import path
 from .data_types import UDMesh, Node, sanitize_name
 from mathutils import Matrix, Vector, Euler
+import numpy as np
 
 import logging
 log = logging.getLogger("bl_datasmith")
@@ -181,11 +182,13 @@ def exp_tex_image(socket, exp_list):
 			return { "expression": exp_scalar(0, exp_list) }
 
 		name = sanitize_name(image.name) # name_full?
-
+		should_whitelist = False
 		# we use this to know if this texture is behind a normalmap node, so
 		# we mark it as non-sRGB+invert green channel
 		texture_type = get_context() or 'SRGB' 
-
+		if texture_type == MAT_CTX_BUMP:
+			should_whitelist = True
+			texture_type = 'SRGB'
 		# ensure that texture is exported
 		get_or_create_texture(name, image, texture_type)
 
@@ -231,7 +234,7 @@ def exp_tex_image(socket, exp_list):
 				'VECTOR':  MAT_FUNC_MAPPING_VECTOR,
 			}[mapping.vector_type]
 
-			if mapping.vector_type in ('NORMAL', 'TEXTURE'):
+			if mapping.vector_type == 'NORMAL':
 				report_warn("Unreal importer doesn't handle MAPPING:%s correctly" % mapping.vector_type)
 			
 			n = Node("FunctionCall", { "Function": mapping_func })
@@ -270,6 +273,9 @@ def exp_tex_image(socket, exp_list):
 
 		cached_node = exp_list.push(texture_exp)
 		reverse_expressions[node] = cached_node
+
+		if should_whitelist:
+			whitelisted_textures.append({ "expression": cached_node })
 
 	output_index = 0 # RGB
 	# indices 1, 2, 3 are separate RGB channels in unreal
@@ -1339,10 +1345,13 @@ def exp_bump(node, exp_list):
 	exp_invert = exp_scalar(-1 if node.invert else 1, exp_list)
 	push_exp_input(bump_node, "0", exp_invert)
 
+	push_context(MAT_CTX_BUMP)
 	inputs = node.inputs
 	push_exp_input(bump_node, "1", get_expression(inputs["Strength"], exp_list))
 	push_exp_input(bump_node, "2", get_expression(inputs["Distance"], exp_list))
 	push_exp_input(bump_node, "3", get_expression(inputs["Height"], exp_list))
+	pop_context()
+
 	push_exp_input(bump_node, "4", get_expression(inputs["Normal"], exp_list, skip_default_warn=True))
 	return {"expression": exp_list.push(bump_node)}
 
@@ -1454,6 +1463,7 @@ def exp_fresnel(node, exp_list):
 	return exp_list.push(n)
 
 
+MAT_CTX_BUMP = 'BUMP'
 context_stack = []
 def push_context(context):
 	context_stack.append(context)
@@ -1964,6 +1974,15 @@ def get_expression_inner(socket, exp_list, target_socket):
 
 
 material_hint_twosided = False
+# if we try to use textures that end up being connected to the normal input of
+# a material in UE, UE tries to be smart and flag them as normal maps, but
+# sometimes these aren't normal maps. for example when we use a texture to
+# blend between other two. in those cases we want to tell unreal to NOT flag
+# these as normal maps, and the only way to do this is to connect them to a
+# basecolor or specular socket too
+whitelisted_textures = []
+
+MAT_FUNC_PASSTHROUGH = "/DatasmithBlenderContent/MaterialFunctions/Passthrough"
 
 def pbr_nodetree_material(material):
 
@@ -1990,9 +2009,8 @@ def pbr_nodetree_material(material):
 	volume_field = output_node.inputs['Volume']
 	# TODO: also check for output_node.inputs['Displacement']
 
-
 	expressions = None
-	if volume_field.links:
+	if volume_field.links and not surface_field.links:
 		report_warn("material %s has volume nodes, but we don't handle this yet, writing transparent material", material.name)
 		expressions = {
 			"BaseColor":  {"expression": exp_vector((0,0,0), exp_list)},
@@ -2000,6 +2018,10 @@ def pbr_nodetree_material(material):
 			"Opacity":    {"expression": exp_scalar(0.0, exp_list)},
 		}
 
+
+	global whitelisted_textures
+	whitelisted_textures = []
+	
 	if not expressions:
 		# here we decided using surface nodes, if there is nothing connected, the fallback behaviour is
 		# using the blackout node (already happens in get_expression)
@@ -2013,6 +2035,35 @@ def pbr_nodetree_material(material):
 		# the result of this call is expected to be a dictionary, as it is a shader socket, and should have
 		# fields like "BaseColor", "Roughness", etc...
 		expressions = get_expression(surface_field, exp_list)
+
+	# we want to do some post-process on the actual outputs, so we link the
+	# whitelisted materials to a socket other than the normal, so they don't
+	# get marked as normal maps
+
+
+	first_passthrough_exp = None
+	# last_passthrough should be a whole node, because we will add things to
+	# it after adding it to exp_list
+	last_passthrough = None
+	for tex in whitelisted_textures:
+		# maybe we should filter these if they are sRGB or not to decide
+		# between connecting them to the basecolor (and get marked as
+		# diffuse) or specular (and get marked as such), but not today.
+		passthrough = Node("FunctionCall", {"Function": MAT_FUNC_PASSTHROUGH})
+		passthrough_exp = exp_list.push(passthrough)
+		if last_passthrough:
+			push_exp_input(last_passthrough, "1", passthrough_exp)
+		if not first_passthrough_exp:
+			first_passthrough_exp = passthrough_exp
+		push_exp_input(passthrough, "0", tex)
+		last_passthrough = passthrough
+
+	if first_passthrough_exp:
+		prev_base_color = expressions["BaseColor"]
+		main_passthrough = Node("FunctionCall", {"Function": MAT_FUNC_PASSTHROUGH})
+		push_exp_input(main_passthrough, "0", prev_base_color)
+		push_exp_input(main_passthrough, "1", first_passthrough_exp)
+		expressions["BaseColor"] = {"expression": exp_list.push(main_passthrough) }
 
 	# here we add those BaseColor, Roughness, etc... values to the UEPbrMaterial node
 	for key, value in expressions.items():
@@ -2095,7 +2146,6 @@ def collect_pbr_material(mat_with_owner):
 	log.debug("creating material %s with node_tree " % material.name)
 	return pbr_nodetree_material(material)
 
-import numpy as np
 
 
 
