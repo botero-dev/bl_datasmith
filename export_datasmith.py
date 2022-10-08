@@ -285,6 +285,27 @@ def exp_tex_image(socket, exp_list):
 	return { "expression": cached_node, "OutputIndex": output_index }
 
 
+def exp_tex_magic(socket, exp_list):
+
+	node = socket.node
+	
+	function_path = "/DatasmithBlenderContent/MaterialFunctions/TexMagic"
+	n = Node("FunctionCall", { "Function": function_path})
+
+	inputs = node.inputs
+	push_exp_input(n, "0", get_expression(inputs["Vector"], exp_list))
+	push_exp_input(n, "1", get_expression(inputs["Scale"], exp_list))
+	push_exp_input(n, "2", get_expression(inputs["Distortion"], exp_list))
+	push_exp_input(n, "3", exp_scalar(node.turbulence_depth, exp_list))
+
+	out_socket = 0
+	if socket.name == "Fac":
+		out_socket = 1
+	return { "expression": exp_list.push(n), "OutputIndex":out_socket }
+
+
+
+
 tex_dimensions_map = {
 	'1D': '1d',
 	'2D': '2d',
@@ -1951,7 +1972,8 @@ def get_expression_inner(socket, exp_list, target_socket):
 	if node.type == 'TEX_IMAGE':
 		return exp_tex_image(socket, exp_list)
 		
-
+	if node.type == 'TEX_MAGIC':
+		return exp_tex_magic(socket, exp_list)
 	if node.type == 'TEX_MUSGRAVE':
 		return exp_tex_musgrave(socket, exp_list)
 	if node.type == 'TEX_NOISE':
