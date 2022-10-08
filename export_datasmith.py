@@ -90,7 +90,7 @@ def exp_scalar(value, exp_list):
 # if we flip the Y axis of the UVs when first querying them, and then flip it
 # back right before we are going to use it in a sampler node, we match more
 # accurately what blender does under the hood
-USE_TEXCOORD_FLIPY = True
+USE_TEXCOORD_FLIP_Y = True
 # This has a cost, so we should definitely make it a tunable in the plugin
 
 MAT_FUNC_FLIPY = "/DatasmithBlenderContent/MaterialFunctions/FlipY"
@@ -103,7 +103,7 @@ def exp_texcoord(exp_list, index=0, u_tiling=1.0, v_tiling=1.0):
 
 	exp_uv = exp_list.push(uv)
 
-	if USE_TEXCOORD_FLIPY:
+	if USE_TEXCOORD_FLIP_Y:
 		flip = Node("FunctionCall", { "Function": MAT_FUNC_FLIPY })
 		push_exp_input(flip, "0", exp_uv)
 		exp_uv = exp_list.push(flip)
@@ -115,6 +115,11 @@ def exp_texcoord(exp_list, index=0, u_tiling=1.0, v_tiling=1.0):
 
 
 MAT_FUNC_TEXCOORD_GENERATED = "/DatasmithBlenderContent/MaterialFunctions/TexCoord_Generated"
+def exp_texcoord_generated(exp_list):
+	# this function is used as a generator for default inputs in some tex nodes
+	n = Node("FunctionCall", { "Function": MAT_FUNC_TEXCOORD_GENERATED })
+	return { "expression": exp_list.push(n) }
+
 def exp_texcoord_node(socket, exp_list):
 	socket_name = socket.name
 	if socket_name == "Generated":
@@ -151,8 +156,9 @@ def exp_tex_gradient(socket, exp_list):
 
 	function_path = tex_gradient_node_map[gradient_type]
 	n = Node("FunctionCall", { "Function": function_path})
-	in_exp = get_expression(node.inputs["Vector"], exp_list, skip_default_warn=True)
-	n.push(exp_input("0", in_exp))
+
+	vector_exp = get_expression_mapped(node.inputs['Vector'], exp_list, exp_texcoord_generated)
+	push_exp_input(n, "0", vector_exp)
 
 	out_socket = 0
 	if socket.name == "Fac":
@@ -194,58 +200,7 @@ def exp_tex_image(socket, exp_list):
 
 		texture_exp = exp_texture(name)
 
-		# we skip warnings for this get_expression call because it is very
-		# common to be disconnected in that case, we export it as
-		# disconnected to unreal too, which uses the default UV channel by
-		# default.
-		tex_coord = get_expression(node.inputs['Vector'], exp_list, skip_default_warn=True)
-
-
-		# there is this secret menu to the right in TEX_IMAGE nodes that
-		# consists in a mapping node + axis reprojection
-		mapping = node.texture_mapping
-		mapping_axes = (mapping.mapping_x, mapping.mapping_y, mapping.mapping_z)
-		base_axes = ('X', 'Y', 'Z')
-		if mapping_axes != base_axes:
-			if not tex_coord:
-				tex_coord = exp_texcoord(exp_list)
-			
-			node_break = Node("FunctionCall", { "Function": MAT_FUNC_BREAK_FLOAT3 } )
-			push_exp_input(node_break, "0", tex_coord)
-			node_break_exp = exp_list.push(node_break)
-			
-			node_make = Node("FunctionCall", { "Function": MAT_FUNC_MAKE_FLOAT3 } )
-			for idx in range(3):
-				if mapping_axes[idx] in base_axes:
-					target_idx = base_axes.index(mapping_axes[idx])
-					push_exp_input(node_make, idx, (node_break_exp, target_idx))
-
-			tex_coord = {"expression": exp_list.push(node_make)}
-		
-		tx_loc, tx_rot, tx_scale = (mapping.translation, mapping.rotation, mapping.scale)
-		if tx_loc != VEC_ZERO or tx_rot != ROT_ZERO or tx_scale != VEC_ONE:
-			if not tex_coord:
-				tex_coord = exp_texcoord(exp_list)
-
-			mapping_func = {
-				'NORMAL':  MAT_FUNC_MAPPING_NORMAL,
-				'POINT':   MAT_FUNC_MAPPING_POINT,
-				'TEXTURE': MAT_FUNC_MAPPING_TEX,
-				'VECTOR':  MAT_FUNC_MAPPING_VECTOR,
-			}[mapping.vector_type]
-
-			if mapping.vector_type == 'NORMAL':
-				report_warn("Unreal importer doesn't handle MAPPING:%s correctly" % mapping.vector_type)
-			
-			n = Node("FunctionCall", { "Function": mapping_func })
-
-			push_exp_input(n, "0", tex_coord)
-			push_exp_input(n, "1", exp_vector(tx_loc, exp_list))
-			push_exp_input(n, "2", exp_vector(tx_rot, exp_list))
-			push_exp_input(n, "3", exp_vector(tx_scale, exp_list))
-
-			tex_coord = {"expression": exp_list.push(n)}
-			
+		tex_coord = get_expression_mapped(node.inputs['Vector'], exp_list, exp_texcoord)
 
 		tex_coord_exp = None
 		if tex_coord:
@@ -263,7 +218,7 @@ def exp_tex_image(socket, exp_list):
 
 		if tex_coord_exp:
 
-			if USE_TEXCOORD_FLIPY:
+			if USE_TEXCOORD_FLIP_Y:
 				flip = Node("FunctionCall", { "Function": MAT_FUNC_FLIPY })
 				push_exp_input(flip, "0", tex_coord_exp)
 				tex_coord_exp = {"expression": exp_list.push(flip)}
@@ -284,6 +239,67 @@ def exp_tex_image(socket, exp_list):
 
 	return { "expression": cached_node, "OutputIndex": output_index }
 
+
+
+# the generator param is a function that receives the exp_list and returns
+# the expression for the default value, for example `exp_texcoord`
+def get_expression_mapped(socket, exp_list, generator, force_exp=False):
+	# there is this secret menu to the right in TEX_IMAGE nodes that
+	# consists in a mapping node + axis reprojection
+	# we don't want to create mapping node if not needed
+	result_exp = None
+	if len(socket.links) != 0:
+		result_exp = get_expression(socket, exp_list)
+
+	if result_exp == None and force_exp:
+		result_exp = generator(exp_list)
+	node = socket.node
+	mapping = node.texture_mapping
+	mapping_axes = (mapping.mapping_x, mapping.mapping_y, mapping.mapping_z)
+	base_axes = ('X', 'Y', 'Z')
+	if mapping_axes != base_axes:
+		report_warn("node %s used axis mapping" % node.type)
+		if not result_exp:
+			result_exp = generator(exp_list)
+		
+		node_break = Node("FunctionCall", { "Function": MAT_FUNC_BREAK_FLOAT3 } )
+		push_exp_input(node_break, "0", result_exp)
+		node_break_exp = exp_list.push(node_break)
+		
+		node_make = Node("FunctionCall", { "Function": MAT_FUNC_MAKE_FLOAT3 } )
+		for idx in range(3):
+			if mapping_axes[idx] in base_axes:
+				target_idx = base_axes.index(mapping_axes[idx])
+				push_exp_input(node_make, idx, (node_break_exp, target_idx))
+
+		result_exp = {"expression": exp_list.push(node_make)}
+	
+	tx_loc, tx_rot, tx_scale = (mapping.translation, mapping.rotation, mapping.scale)
+	if tx_loc != VEC_ZERO or tx_rot != ROT_ZERO or tx_scale != VEC_ONE:
+		report_warn("node %s used vector mapping" % node.type)
+
+		if not result_exp:
+			result_exp = generator(exp_list)
+
+		mapping_func = {
+			'NORMAL':  MAT_FUNC_MAPPING_NORMAL,
+			'POINT':   MAT_FUNC_MAPPING_POINT,
+			'TEXTURE': MAT_FUNC_MAPPING_TEX,
+			'VECTOR':  MAT_FUNC_MAPPING_VECTOR,
+		}[mapping.vector_type]
+
+		n = Node("FunctionCall", { "Function": mapping_func })
+
+		push_exp_input(n, "0", result_exp)
+		push_exp_input(n, "1", exp_vector(tx_loc, exp_list))
+		push_exp_input(n, "2", exp_vector(tx_rot, exp_list))
+		push_exp_input(n, "3", exp_vector(tx_scale, exp_list))
+
+		result_exp = {"expression": exp_list.push(n)}
+
+	return result_exp
+
+
 def exp_tex_brick(socket, exp_list):
 
 	node = socket.node
@@ -292,7 +308,8 @@ def exp_tex_brick(socket, exp_list):
 	n = Node("FunctionCall", { "Function": function_path})
 
 	inputs = node.inputs
-	push_exp_input(n, "0", get_expression(inputs["Vector"], exp_list))
+	vector_exp = get_expression_mapped(inputs['Vector'], exp_list, exp_texcoord_generated)
+	push_exp_input(n, "0", vector_exp)
 	push_exp_input(n, "1", get_expression(inputs["Color1"], exp_list))
 	push_exp_input(n, "2", get_expression(inputs["Color2"], exp_list))
 	push_exp_input(n, "3", get_expression(inputs["Mortar"], exp_list))
@@ -323,7 +340,8 @@ def exp_tex_magic(socket, exp_list):
 	n = Node("FunctionCall", { "Function": function_path})
 
 	inputs = node.inputs
-	push_exp_input(n, "0", get_expression(inputs["Vector"], exp_list))
+	vector_exp = get_expression_mapped(inputs['Vector'], exp_list, exp_texcoord_generated)
+	push_exp_input(n, "0", vector_exp)
 	push_exp_input(n, "1", get_expression(inputs["Scale"], exp_list))
 	push_exp_input(n, "2", get_expression(inputs["Distortion"], exp_list))
 	push_exp_input(n, "3", exp_scalar(node.turbulence_depth, exp_list))
@@ -374,17 +392,21 @@ def exp_tex_musgrave(socket, exp_list):
 	def add_param(param_name, cond=True):
 		if cond:
 			arguments.append(param_name)
-			param_exp = get_expression(inputs[param_name], exp_list, skip_default_warn=True)
-			if param_exp == None:
-				assert param_name == "Vector"
-				n = Node("FunctionCall", { "Function": MAT_FUNC_TEXCOORD_GENERATED })
-				param_exp = { "expression": exp_list.push(n) }
+			param_exp = get_expression(inputs[param_name], exp_list)
+			assert param_exp
 			arguments2.append((param_name, param_exp))
 		else:
 			arguments.append("0")
 
 	use_vector = (dimensions!='1d')
-	add_param("Vector", cond=use_vector)
+	if use_vector:
+		vector_exp = get_expression_mapped(inputs['Vector'], exp_list, exp_texcoord_generated, force_exp=True)
+		push_exp_input(n, "0", vector_exp)
+		arguments.append("Vector")
+		arguments2.append(("Vector", vector_exp))
+	else:
+		arguments.append("0")
+
 	use_w = (dimensions == '1d' or dimensions == '4d')
 	add_param("W", cond=use_w)
 
@@ -428,14 +450,14 @@ def exp_tex_noise(socket, exp_list):
 	def push_input(name):
 		nonlocal input_idx
 		exp = get_expression(inputs[name], exp_list, skip_default_warn=True)
-		if exp:
-			n.push(exp_input(input_idx, exp))
-		else:
-			assert name == "Vector" # we only allow disconnected node for the Vector input
+		assert exp
+		push_exp_input(n, input_idx, exp)
 		input_idx += 1
 
 	if dimensions!='1d':
-		push_input("Vector")
+		vector_exp = get_expression_mapped(inputs['Vector'], exp_list, exp_texcoord_generated, force_exp=True)
+		push_exp_input(n, "0", vector_exp)
+		input_idx += 1
 	if dimensions == '1d' or dimensions == '4d':
 		push_input("W")
 
@@ -480,15 +502,14 @@ def exp_tex_voronoi(socket, exp_list):
 	def push_input(name):
 		nonlocal input_idx
 		exp = get_expression(inputs[name], exp_list, skip_default_warn=True)
-		if exp:
-			n.push(exp_input(input_idx, exp))
-		else:
-			assert name == "Vector" # we only allow disconnected node for the Vector input
+		assert exp
+		push_exp_input(n, input_idx, exp)
 		input_idx += 1
 
-
 	if dimensions!='1d':
-		push_input("Vector")
+		vector_exp = get_expression_mapped(inputs['Vector'], exp_list, exp_texcoord_generated, force_exp=True)
+		push_exp_input(n, "0", vector_exp)
+		input_idx += 1
 	if dimensions == '1d' or dimensions == '4d':
 		push_input("W")
 
@@ -561,7 +582,8 @@ def exp_tex_wave(socket, exp_list):
 	n = Node("FunctionCall", { "Function": function_path})
 
 	inputs = node.inputs
-	push_exp_input(n, "0", get_expression(inputs["Vector"], exp_list))
+	vector_exp = get_expression_mapped(inputs['Vector'], exp_list, exp_texcoord_generated)
+	push_exp_input(n, "0", vector_exp)
 	push_exp_input(n, "1", get_expression(inputs["Scale"], exp_list))
 	push_exp_input(n, "2", get_expression(inputs["Distortion"], exp_list))
 	push_exp_input(n, "3", get_expression(inputs["Detail"], exp_list))
@@ -578,22 +600,30 @@ def exp_tex_wave(socket, exp_list):
 	return { "expression": exp_list.push(n), "OutputIndex":out_socket }
 
 
+NODE_TEX_CHECKER_OUTPUTS = ("Color", "Fac")
 
 def exp_tex_checker(socket, exp_list):
-	if socket.node in cached_nodes:
-		exp = { "expression": cached_nodes[socket.node] }
-	else:
-		exp = exp_function_call(
-			"/DatasmithBlenderContent/MaterialFunctions/TexChecker",
-			exp_list=exp_list,
-			inputs=socket.node.inputs,
-		)
-		cached_nodes[socket.node] = exp["expression"]
+	node = socket.node
+	cached_node = cached_nodes.get(node)
+	if cached_node:
+		output_index = cached_node[1].index(socket.name)
+		return {"expression": cached_node[0], "OutputIndex": output_index}
+
+	inputs = node.inputs
+	n = Node("FunctionCall", {"Function": "/DatasmithBlenderContent/MaterialFunctions/TexChecker"})
+	vector_exp = get_expression_mapped(inputs['Vector'], exp_list, exp_texcoord_generated)
+	push_exp_input(n, "0", vector_exp)
+	push_exp_input(n, "1", get_expression(inputs["Color1"], exp_list))
+	push_exp_input(n, "2", get_expression(inputs["Color2"], exp_list))
+	push_exp_input(n, "3", get_expression(inputs["Scale"], exp_list))
+	
+	exp_idx = exp_list.push(n)
+	cached_nodes[socket.node] = (exp_idx, NODE_TEX_CHECKER_OUTPUTS)
 
 	# could be faster by comparing to constants instead?
-	exp["OutputIndex"] = socket.node.outputs.find(socket.name)
+	output_index = NODE_TEX_CHECKER_OUTPUTS.index(socket.name)
 
-	return exp
+	return {"expression": exp_idx, "OutputIndex": output_index}
 
 
 def exp_uvmap(node, exp_list):
@@ -655,9 +685,11 @@ def exp_make_vec3(socket, exp_list):
 	return { "expression": exp_list.push(output) }
 
 def exp_make_hsv(socket, exp_list):
-	vec3_input = exp_make_vec3(socket, exp_list)
+	inputs = socket.node.inputs
 	output = Node("FunctionCall",  { "Function": "/DatasmithBlenderContent/MaterialFunctions/HSV_To_RGB" })
-	output.push(exp_input("0", vec3_input))
+	push_exp_input(output, "0", get_expression(inputs[0], exp_list))
+	push_exp_input(output, "1", get_expression(inputs[1], exp_list))
+	push_exp_input(output, "2", get_expression(inputs[2], exp_list))
 	return { "expression": exp_list.push(output) }
 
 
@@ -665,31 +697,31 @@ MAT_FUNC_BREAK_FLOAT3 = "/Engine/Functions/Engine_MaterialFunctions02/Utility/Br
 def exp_break_vec3(socket, exp_list):
 	expression_idx = -1
 	if socket.node in cached_nodes:
-		expression_idx = cached_nodes[socket.node]
+		expression_idx = cached_nodes[socket.node][0]
 	else:
 		output = Node("FunctionCall",  { "Function": MAT_FUNC_BREAK_FLOAT3 })
 		output.push(exp_input("0", get_expression(socket.node.inputs[0], exp_list)))
 		expression_idx = exp_list.push(output)
-		cached_nodes[socket.node] = expression_idx
+		cached_nodes[socket.node] = (expression_idx, ) # TODO: this should be filled with 'R','G','B' or XYZ mapping
 
 	output_index = socket.node.outputs.find(socket.name) # could be faster by comparing to constants instead?
 	return { "expression": expression_idx, "OutputIndex": output_index }
 
+NODE_BREAK_HSV_OUTPUTS = ("H", "S", "V")
 def exp_break_hsv(socket, exp_list):
 
 	expression_idx = -1
-	if socket.node in cached_nodes:
-		expression_idx = cached_nodes[socket.node]
-	else:
-		input = Node("FunctionCall",  { "Function": "/DatasmithBlenderContent/MaterialFunctions/RGB_To_HSV" })
-		hsv_expression_idx = input.push(exp_input("0", get_expression(socket.node.inputs[0], exp_list)))
+	cached_node = cached_nodes.get(socket.node)
+	if cached_node:
+		output_index = cached_node[1].index(socket.name)
+		return {"expression": cached_node[0], "OutputIndex": output_index}
 
-		output = Node("FunctionCall",  { "Function": MAT_FUNC_BREAK_FLOAT3 })
-		output.push(exp_input("0", hsv_expression_idx ))
-		expression_idx = exp_list.push(output)
-		cached_nodes[socket.node] = expression_idx
+	output = Node("FunctionCall",  { "Function": "/DatasmithBlenderContent/MaterialFunctions/RGB_To_HSV" })
+	push_exp_input(output, "0", get_expression(socket.node.inputs[0], exp_list))
+	expression_idx = exp_list.push(output)
+	cached_nodes[socket.node] = (expression_idx, NODE_BREAK_HSV_OUTPUTS)
 
-	output_index = socket.node.outputs.find(socket.name) # could be faster by comparing to constants instead?
+	output_index = NODE_BREAK_HSV_OUTPUTS.index(socket.name) 
 	return { "expression": expression_idx, "OutputIndex": output_index }
 
 
