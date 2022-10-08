@@ -491,6 +491,43 @@ def exp_tex_voronoi(socket, exp_list):
 	return { "expression": exp_list.push(n), "OutputIndex":out_socket }
 
 
+def exp_tex_wave(socket, exp_list):
+
+	node = socket.node
+	wave_type = node.wave_type
+	wave_type_val = 0
+	direction_val = 0
+	if wave_type == 'BANDS':
+		wave_type_val = 0
+		direction_val = ('X', 'Y', 'Z', 'DIAGONAL').index(node.bands_direction)
+	elif wave_type == 'RINGS':
+		wave_type_val = 1
+		direction_val = ('X', 'Y', 'Z', 'SPHERICAL').index(node.rings_direction)
+
+	profile_val = ('SIN', 'SAW', 'TRI').index(node.wave_profile)
+
+	function_path = "/DatasmithBlenderContent/MaterialFunctions/TexWave"
+	n = Node("FunctionCall", { "Function": function_path})
+
+	inputs = node.inputs
+	push_exp_input(n, "0", get_expression(inputs["Vector"], exp_list))
+	push_exp_input(n, "1", get_expression(inputs["Scale"], exp_list))
+	push_exp_input(n, "2", get_expression(inputs["Distortion"], exp_list))
+	push_exp_input(n, "3", get_expression(inputs["Detail"], exp_list))
+	push_exp_input(n, "4", get_expression(inputs["Detail Scale"], exp_list))
+	push_exp_input(n, "5", get_expression(inputs["Detail Roughness"], exp_list))
+	push_exp_input(n, "6", get_expression(inputs["Phase Offset"], exp_list))
+	push_exp_input(n, "7", exp_scalar(wave_type_val, exp_list))
+	push_exp_input(n, "8", exp_scalar(direction_val, exp_list))
+	push_exp_input(n, "9", exp_scalar(profile_val, exp_list))
+		
+	out_socket = 0
+	if socket.name == "Fac":
+		out_socket = 1
+	return { "expression": exp_list.push(n), "OutputIndex":out_socket }
+
+
+
 def exp_tex_checker(socket, exp_list):
 	if socket.node in cached_nodes:
 		exp = { "expression": cached_nodes[socket.node] }
@@ -1921,6 +1958,8 @@ def get_expression_inner(socket, exp_list, target_socket):
 		return exp_tex_noise(socket, exp_list)
 	if node.type == 'TEX_VORONOI':
 		return exp_tex_voronoi(socket, exp_list)
+	if node.type == 'TEX_WAVE':
+		return exp_tex_wave(socket, exp_list)
 
 	# Add > Color
 	if node.type == 'BRIGHTCONTRAST':
