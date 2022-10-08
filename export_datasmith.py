@@ -258,7 +258,6 @@ def get_expression_mapped(socket, exp_list, generator, force_exp=False):
 	mapping_axes = (mapping.mapping_x, mapping.mapping_y, mapping.mapping_z)
 	base_axes = ('X', 'Y', 'Z')
 	if mapping_axes != base_axes:
-		report_warn("node %s used axis mapping" % node.type)
 		if not result_exp:
 			result_exp = generator(exp_list)
 		
@@ -276,7 +275,6 @@ def get_expression_mapped(socket, exp_list, generator, force_exp=False):
 	
 	tx_loc, tx_rot, tx_scale = (mapping.translation, mapping.rotation, mapping.scale)
 	if tx_loc != VEC_ZERO or tx_rot != ROT_ZERO or tx_scale != VEC_ONE:
-		report_warn("node %s used vector mapping" % node.type)
 
 		if not result_exp:
 			result_exp = generator(exp_list)
