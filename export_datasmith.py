@@ -284,6 +284,36 @@ def exp_tex_image(socket, exp_list):
 
 	return { "expression": cached_node, "OutputIndex": output_index }
 
+def exp_tex_brick(socket, exp_list):
+
+	node = socket.node
+
+	function_path = "/DatasmithBlenderContent/MaterialFunctions/TexBrick"
+	n = Node("FunctionCall", { "Function": function_path})
+
+	inputs = node.inputs
+	push_exp_input(n, "0", get_expression(inputs["Vector"], exp_list))
+	push_exp_input(n, "1", get_expression(inputs["Color1"], exp_list))
+	push_exp_input(n, "2", get_expression(inputs["Color2"], exp_list))
+	push_exp_input(n, "3", get_expression(inputs["Mortar"], exp_list))
+	push_exp_input(n, "4", get_expression(inputs["Scale"], exp_list))
+	push_exp_input(n, "5", get_expression(inputs["Mortar Size"], exp_list))
+	push_exp_input(n, "6", get_expression(inputs["Mortar Smooth"], exp_list))
+	push_exp_input(n, "7", get_expression(inputs["Bias"], exp_list))
+	push_exp_input(n, "8", get_expression(inputs["Brick Width"], exp_list))
+	push_exp_input(n, "9", get_expression(inputs["Row Height"], exp_list))
+	push_exp_input(n, "10", exp_scalar(node.offset, exp_list))
+	push_exp_input(n, "11", exp_scalar(node.offset_frequency, exp_list))
+	push_exp_input(n, "12", exp_scalar(node.squash, exp_list))
+	push_exp_input(n, "13", exp_scalar(node.squash_frequency, exp_list))
+		
+	out_socket = 0
+	if socket.name == "Fac":
+		out_socket = 1
+	return { "expression": exp_list.push(n), "OutputIndex":out_socket }
+
+
+
 
 def exp_tex_magic(socket, exp_list):
 
@@ -1959,7 +1989,8 @@ def get_expression_inner(socket, exp_list, target_socket):
 
 
 	# Add > Texture
-	# if node.type == 'TEX_BRICK':
+	if node.type == 'TEX_BRICK':
+		return exp_tex_brick(socket, exp_list)
 	if node.type == 'TEX_CHECKER':
 		return exp_tex_checker(socket, exp_list)
 	# if node.type == 'TEX_ENVIRONMENT':
