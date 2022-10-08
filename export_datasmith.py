@@ -1073,6 +1073,40 @@ def exp_normal_map(socket, exp_list):
 		return_exp = { "expression": exp_list.push(node_strength) }
 	return return_exp
 
+MAT_FUNC_VECTOR_ROTATE_ANGLEAXIS = "/DatasmithBlenderContent/MaterialFunctions/VectorRotateAngleAxis"
+MAT_FUNC_VECTOR_ROTATE_EULERANGLES = "/DatasmithBlenderContent/MaterialFunctions/VectorRotateEulerAngles"
+
+def exp_vector_rotate(socket, exp_list):
+	node = socket.node
+	inputs = node.inputs
+
+	rotation_type = node.rotation_type
+	node_fn = MAT_FUNC_VECTOR_ROTATE_ANGLEAXIS
+	if rotation_type == 'EULER_XYZ':
+		node_fn= MAT_FUNC_VECTOR_ROTATE_EULERANGLES
+
+	node_rotate = Node("FunctionCall", {"Function": node_fn})
+	push_exp_input(node_rotate, "0", exp_scalar(-1 if node.invert else 1, exp_list)) # Sign
+	push_exp_input(node_rotate, "1", get_expression(inputs["Vector"], exp_list)) # Vector
+	push_exp_input(node_rotate, "2", get_expression(inputs["Center"], exp_list, force_default=True)) # Center
+
+	if rotation_type == 'EULER_XYZ':
+		push_exp_input(node_rotate, "3", get_expression(inputs["Rotation"], exp_list))
+	else:
+		axis = None
+		if rotation_type == 'X_AXIS':
+			axis = exp_vector((1, 0, 0), exp_list)
+		elif rotation_type == 'Y_AXIS':
+			axis = exp_vector((0, 1, 0), exp_list)
+		elif rotation_type == 'Z_AXIS':
+			axis = exp_vector((0, 0, 1), exp_list)
+		else:
+			axis = get_expression(inputs["Axis"], exp_list, force_default=True)
+		push_exp_input(node_rotate, "3", axis)
+		push_exp_input(node_rotate, "4", get_expression(inputs["Angle"], exp_list))
+
+	return {"expression": exp_list.push(node_rotate)}
+
 
 def exp_new_geometry(socket, exp_list):
 	socket_name = socket.name
@@ -1923,6 +1957,8 @@ def get_expression_inner(socket, exp_list, target_socket):
 	# if node.type == 'CURVE_VEC':
 	# if node.type == 'VECTOR_DISPLACEMENT':
 	# if node.type == 'VECT_TRANSFORM':
+	if node.type == 'VECTOR_ROTATE':
+		return exp_vector_rotate(socket, exp_list)
 
 	# Add > Converter
 
