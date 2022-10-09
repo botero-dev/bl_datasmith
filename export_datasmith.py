@@ -1355,7 +1355,7 @@ def exp_blackbody(from_node, exp_list):
 	return {"expression": exp}
 
 def exp_shader_to_rgb(socket, exp_list):
-	log_warn("Unsupported material node 'Shader To RGB', lighting effects will be lost.", once=True)
+	report_warn("Unsupported material node 'Shader To RGB', lighting effects will be lost.", once=True)
 	shader_exp = get_expression(socket.node.inputs[0], exp_list)
 	basecolor = shader_exp.get("BaseColor")
 	emissive = shader_exp.get("EmissiveColor")
