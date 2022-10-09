@@ -1202,6 +1202,34 @@ def exp_normal_map(socket, exp_list):
 		return_exp = { "expression": exp_list.push(node_strength) }
 	return return_exp
 
+
+VECT_TRANSFORM_TYPE = ('POINT', 'VECTOR', 'NORMAL')
+
+VECT_TRANSFORM_RENAME_MAP = {
+	'WORLD':  "World",
+	'CAMERA': "Camera",
+	'OBJECT': "Object",
+}
+
+def exp_vect_transform(socket, exp_list):
+	node = socket.node
+
+	input_exp = get_expression(node.inputs[0], exp_list)
+	if node.convert_from == node.convert_to:
+		return input_exp
+
+	name_from = VECT_TRANSFORM_RENAME_MAP[node.convert_from]
+	name_to =   VECT_TRANSFORM_RENAME_MAP[node.convert_to]
+	func_path = "/DatasmithBlenderContent/MaterialFunctions/VectorTransform%sTo%s" % (name_from, name_to)
+	output = Node("FunctionCall", {"Function": func_path})
+	push_exp_input(output, "0", input_exp)
+
+
+	output_index = VECT_TRANSFORM_TYPE.index(node.vector_type)
+	if node.vector_type == 'NORMAL':
+		report_warn("Unsupported vector type:Normal in Vector Transform node. FIXME", once=True)
+	return {"expression": exp_list.push(output), "OutputIndex": output_index}
+
 MAT_FUNC_VECTOR_ROTATE_ANGLEAXIS = "/DatasmithBlenderContent/MaterialFunctions/VectorRotateAngleAxis"
 MAT_FUNC_VECTOR_ROTATE_EULERANGLES = "/DatasmithBlenderContent/MaterialFunctions/VectorRotateEulerAngles"
 
@@ -2126,7 +2154,8 @@ def get_expression_inner(socket, exp_list, target_socket):
 		return exp_normal_map(socket, exp_list)
 	# if node.type == 'CURVE_VEC':
 	# if node.type == 'VECTOR_DISPLACEMENT':
-	# if node.type == 'VECT_TRANSFORM':
+	if node.type == 'VECT_TRANSFORM':
+		return exp_vect_transform(socket, exp_list)
 	if node.type == 'VECTOR_ROTATE':
 		return exp_vector_rotate(socket, exp_list)
 
