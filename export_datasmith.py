@@ -300,6 +300,9 @@ def get_expression_mapped(socket, exp_list, generator, force_exp=False):
 
 	return result_exp
 
+def exp_wireframe(socket, exp_list):
+	report_warn("Unsupported node 'Wireframe'. Writing value 0.", once=True)
+	return {"expression": exp_scalar(0, exp_list)}
 
 def exp_tex_brick(socket, exp_list):
 
@@ -487,6 +490,11 @@ tex_voronoi_type_map = {
 	'DISTANCE_TO_EDGE':  'distance_to_edge',
 	'N_SPHERE_RADIUS':   'n_sphere_radius',
 }
+
+def exp_tex_sky(socket, exp_list):
+	report_warn("Unsupported node 'Sky Texture', Writing value 0.", once=True)
+	return {"expression": exp_scalar(0, exp_list)}
+
 
 def exp_tex_voronoi(socket, exp_list):
 
@@ -1136,6 +1144,9 @@ def exp_invert(node, exp_list):
 
 	return exp_list.push(blend)
 
+def exp_light_falloff(socket, exp_list):
+	report_warn("Unsupported node 'Light Falloff', returning unmodified light strength", once=True)
+	return get_expression(socket.node.inputs["Strength"], exp_list)
 
 MAT_FUNC_MAPPINGS = {
 	'NORMAL':  "/DatasmithBlenderContent/MaterialFunctions/MappingNormal",
@@ -1250,13 +1261,13 @@ def exp_new_geometry(socket, exp_list):
 		return { "expression": exp_list.push(output) }
 
 	if socket_name == "Parametric":
-		report_warn("Material data not supported. Node:Geometry Socket:Parametric", once=True)
+		report_warn("Unsupported node 'Geometry:Parametric'.", once=True)
 		return {"expression": exp_scalar(0.5, exp_list)}
 	if socket_name == "Pointiness":
-		report_warn("Material data not supported. Node:Geometry Socket:Pointiness", once=True)
+		report_warn("Unsupported node 'Geometry:Pointiness'.", once=True)
 		return {"expression": exp_scalar(0.5, exp_list)}
 	if socket_name == "Random Per Island":
-		report_warn("Material data not supported. Node:Geometry Socket:Random Per Island", once=True)
+		report_warn("Unsupported node 'Geometry:Random Per Island'.", once=True)
 		return {"expression": exp_scalar(0, exp_list)}
 
 
@@ -1286,7 +1297,7 @@ def exp_layer_weight(socket, exp_list):
 	return {"expression": expr, "OutputIndex": out_index}
 
 def exp_light_path(socket, exp_list):
-	report_warn("LIGHT_PATH incomplete implementation", once=True)
+	report_warn("Unsupported node 'Light Path:%s'. Writing 1.0 value." % socket.name, once=True)
 	n = exp_scalar(1, exp_list)
 	return {"expression": n}
 
@@ -1294,18 +1305,37 @@ def exp_light_path(socket, exp_list):
 def exp_object_info(socket, exp_list):
 	field = socket.name
 	if field == "Location":
-		# TODO: check if we need to transform these to blender space
-		exp = exp_list.push(Node("ObjectPositionWS"))
-	elif field == "Random":
-		exp = exp_list.push(Node("PerInstanceRandom"))
+		report_warn("Node 'Object Info:Location' Will get inverted Y coordinates, matching UE4 coordinate system.", once=True)
+		n = Node("FunctionCall", {"Function": "/DatasmithBlenderContent/MaterialFunctions/Object_Location"})
+		exp = exp_list.push(n)
+	elif field == "Color":
+		report_warn("Node 'Object Info:Color' is not supported by Unreal, writing white color.", once=True)
+		exp = exp_vector((1,1,1), exp_list)
+	elif field == "Alpha":
+		report_warn("Node 'Object Info:Alpha' is not supported by Unreal, writing 1.0 value instead.", once=True)
+		exp = exp_scalar(1, exp_list)
 	elif field == "Object Index":
-		log.warn("Node Object Info>Object Index translated to random as it is used to randomize too")
+		report_warn("Node 'Object Info:Object Index' is not supported by Unreal, writing PerInstanceRandom instead.", once=True)
+		exp = exp_list.push(Node("PerInstanceRandom"))
+	elif field == "Material Index":
+		report_warn("Node 'Object Info:Material Index' is not supported by Unreal, writing 0 instead.", once=True)
+		exp = exp_scalar(0, exp_list)
+	elif field == "Random":
+		report_warn("Node 'Object Info:Random' only works for instanced meshes.", once=True)
 		exp = exp_list.push(Node("PerInstanceRandom"))
 	else:
-		log.error("Can't write Material node 'Object Info' field:%s" % field)
-		exp = exp_scalar(0, exp_list)
+		report_error("Invalid output for node 'Object Info': '%s'" % field, once=True)
+		exp = -1
 
 	return {"expression": exp, "OutputIndex": 0}
+
+def exp_particle_info(socket, exp_list):
+	field = socket.name
+	report_warn("Unsupported node 'Particle Info:%s'. Writing value 0." % field, once=True)
+	exp = exp_scalar(0, exp_list)
+
+	return {"expression": exp, "OutputIndex": 0}
+
 
 
 DATASMITH_TEXTURE_SIZE = 1024
@@ -1607,6 +1637,13 @@ def exp_vertex_color(socket, exp_list):
 	elif socket.name == "Alpha":
 		return {"expression": exp, "OutputIndex": 4}
 
+def exp_bevel(socket, exp_list):
+	report_warn("Unsupported node 'Bevel', writing unmodified normal", once=True)
+	exp = get_expression(socket.node.inputs["Normal"], exp_list)
+	if not exp:
+		exp = {"expression": exp_vector((0, 0, 1), exp_list)}
+	return exp
+
 def exp_fresnel(node, exp_list):
 	n = Node("FunctionCall", { "Function": op_custom_functions["FRESNEL"]})
 	exp_ior = get_expression(node.inputs['IOR'], exp_list)
@@ -1897,6 +1934,7 @@ def get_expression_inner(socket, exp_list, target_socket):
 
 
 	if node.type == 'ADD_SHADER':
+		report_warn("'Add Shader' is only an approximation, as Unreal's deferred rendering doesn't support this workflow.", once=True)
 		expressions = get_expression(node.inputs[0], exp_list)
 		assert expressions
 
@@ -1947,6 +1985,7 @@ def get_expression_inner(socket, exp_list, target_socket):
 
 		return add_expression
 	if node.type == 'MIX_SHADER':
+		report_warn("'Mix Shader' is only an approximation, as Unreal's deferred rendering doesn't support this workflow.", once=True)
 		expressions = get_expression(node.inputs[1], exp_list)
 		assert expressions
 
@@ -1982,7 +2021,8 @@ def get_expression_inner(socket, exp_list, target_socket):
 	if node.type == 'VERTEX_COLOR':
 		return exp_vertex_color(socket, exp_list)
 
-	# if node.type == 'BEVEL':
+	if node.type == 'BEVEL':
+		return exp_bevel(socket, exp_list)
 	# if node.type == 'CAMERA':
 	if node.type == 'FRESNEL':
 		exp = exp_fresnel(node, exp_list)
@@ -1998,7 +2038,8 @@ def get_expression_inner(socket, exp_list, target_socket):
 		return exp_light_path(socket, exp_list)
 	if node.type == 'OBJECT_INFO':
 		return exp_object_info(socket, exp_list)
-	# if node.type == 'PARTICLE_INFO':
+	if node.type == 'PARTICLE_INFO':
+		return exp_particle_info(socket, exp_list)
 
 	if node.type == 'RGB':
 		return exp_rgb(socket, exp_list)
@@ -2015,7 +2056,8 @@ def get_expression_inner(socket, exp_list, target_socket):
 	if node.type == 'VALUE':
 		return exp_value(socket, exp_list)
 		
-	# if node.type == 'WIREFRAME':
+	if node.type == 'WIREFRAME':
+		return exp_wireframe(socket, exp_list)
 
 
 	# Add > Texture
@@ -2039,6 +2081,8 @@ def get_expression_inner(socket, exp_list, target_socket):
 		return exp_tex_musgrave(socket, exp_list)
 	if node.type == 'TEX_NOISE':
 		return exp_tex_noise(socket, exp_list)
+	if node.type == 'TEX_SKY':
+		return exp_tex_sky(socket, exp_list)
 	if node.type == 'TEX_VORONOI':
 		return exp_tex_voronoi(socket, exp_list)
 	if node.type == 'TEX_WAVE':
@@ -2056,7 +2100,10 @@ def get_expression_inner(socket, exp_list, target_socket):
 	if node.type == 'INVERT':
 		exp = exp_invert(node, exp_list)
 		return {"expression": exp}
-	# if node.type == 'LIGHT_FALLOFF':
+	
+	if node.type == 'LIGHT_FALLOFF':
+		exp = exp_light_falloff(socket, exp_list)
+		return {"expression": exp}
 
 	if node.type == 'MIX_RGB':
 		exp = exp_mixrgb(node, exp_list)
@@ -2170,7 +2217,7 @@ def pbr_nodetree_material(material):
 
 	expressions = None
 	if volume_field.links and not surface_field.links:
-		report_warn("material %s has volume nodes, but we don't handle this yet, writing transparent material", material.name)
+		report_warn("Material %s has volume nodes, which are unsupported. Writing transparent material.", material.name, once=True)
 		expressions = {
 			"BaseColor":  {"expression": exp_vector((0,0,0), exp_list)},
 			"Refraction": {"expression": exp_scalar(1.0, exp_list)},
