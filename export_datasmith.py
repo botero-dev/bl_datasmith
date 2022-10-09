@@ -209,17 +209,20 @@ def exp_tex_image(socket, exp_list):
 
 		tex_coord_exp = None
 		if tex_coord:
-			if node.projection == 'BOX':
-				proj = Node("FunctionCall", { "Function": "/DatasmithBlenderContent/MaterialFunctions/TexCoord_Box"})
-				proj.push(exp_input("0", tex_coord))
-				tex_coord_exp = { "expression": exp_list.push(proj) }
-			elif node.projection == 'FLAT':
-				mask = Node("ComponentMask")
-				mask.push(exp_input("0", tex_coord))
-				tex_coord_exp = { "expression": exp_list.push(mask) }
+			proj = None
+			if node.projection == 'FLAT':
+				proj = Node("ComponentMask")
+			elif node.projection == 'BOX':
+				proj = Node("FunctionCall", { "Function": "/DatasmithBlenderContent/MaterialFunctions/TexImage_ProjBox"})
+			elif node.projection == 'SPHERE':
+				proj = Node("FunctionCall", { "Function": "/DatasmithBlenderContent/MaterialFunctions/TexImage_ProjSphere"})
+			elif node.projection == 'TUBE':
+				proj = Node("FunctionCall", { "Function": "/DatasmithBlenderContent/MaterialFunctions/TexImage_ProjTube"})
 			else:
 				log.error("node TEX_IMAGE has unhandled projection: %s" % node.projection)
 
+			push_exp_input(proj, "0", tex_coord)
+			tex_coord_exp = { "expression": exp_list.push(proj) }
 
 		if tex_coord_exp:
 
@@ -284,12 +287,7 @@ def get_expression_mapped(socket, exp_list, generator, force_exp=False):
 		if not result_exp:
 			result_exp = generator(exp_list)
 
-		mapping_func = {
-			'NORMAL':  MAT_FUNC_MAPPING_NORMAL,
-			'POINT':   MAT_FUNC_MAPPING_POINT,
-			'TEXTURE': MAT_FUNC_MAPPING_TEX,
-			'VECTOR':  MAT_FUNC_MAPPING_VECTOR,
-		}[mapping.vector_type]
+		mapping_func = MAT_FUNC_MAPPINGS[mapping.vector_type]
 
 		n = Node("FunctionCall", { "Function": mapping_func })
 
@@ -1058,10 +1056,6 @@ def exp_mixrgb(node, exp_list):
 
 	return exp_list.push(lerp)
 
-MAT_FUNC_MAPPING_NORMAL = "/DatasmithBlenderContent/MaterialFunctions/MappingNormal"
-MAT_FUNC_MAPPING_POINT =  "/DatasmithBlenderContent/MaterialFunctions/MappingPoint3D"
-MAT_FUNC_MAPPING_TEX =    "/DatasmithBlenderContent/MaterialFunctions/MappingTexture3D"
-MAT_FUNC_MAPPING_VECTOR = "/DatasmithBlenderContent/MaterialFunctions/MappingVector"
 
 op_custom_functions = {
 	"BRIGHTCONTRAST":     "/DatasmithBlenderContent/MaterialFunctions/BrightContrast",
@@ -1071,11 +1065,6 @@ op_custom_functions = {
 	"HUE_SAT":            "/DatasmithBlenderContent/MaterialFunctions/AdjustHSV",
 	"LAYER_WEIGHT":       "/DatasmithBlenderContent/MaterialFunctions/LayerWeight",
 	"LOCAL_POSITION":     "/DatasmithBlenderContent/MaterialFunctions/BlenderLocalPosition",
-	"MAPPING_POINT2D":    "/DatasmithBlenderContent/MaterialFunctions/MappingPoint2D_2",
-	"MAPPING_POINT3D":    MAT_FUNC_MAPPING_POINT,
-	"MAPPING_TEX2D":      "/DatasmithBlenderContent/MaterialFunctions/MappingTexture2D_2",
-	"MAPPING_TEX3D":      MAT_FUNC_MAPPING_TEX,
-	"MAPPING_NORMAL":     MAT_FUNC_MAPPING_NORMAL,
 	"NORMAL_FROM_HEIGHT": "/Engine/Functions/Engine_MaterialFunctions03/Procedurals/NormalFromHeightmap",
 }
 
@@ -1147,26 +1136,19 @@ def exp_invert(node, exp_list):
 
 	return exp_list.push(blend)
 
-def exp_mapping(node, exp_list):
-	if node.vector_type == 'NORMAL':
-		mapping_type = 'MAPPING_NORMAL'
-	else:
-		node_input_rot = node.inputs["Rotation"]
-		default_rot = node_input_rot.default_value
-		uses_3d_rot = default_rot.x != 0 or default_rot.y != 0
-		use_2d_node = not node_input_rot.links and not uses_3d_rot
-		if node.vector_type == 'POINT' or node.vector_type == 'VECTOR':
-			if use_2d_node:
-				mapping_type = 'MAPPING_POINT2D'
-			else:
-				mapping_type = 'MAPPING_POINT3D'
-		elif node.vector_type == 'TEXTURE':
-			if use_2d_node:
-				mapping_type = 'MAPPING_TEX2D'
-			else:
-				mapping_type = 'MAPPING_TEX3D'
 
-	n = Node("FunctionCall", { "Function": op_custom_functions[mapping_type]})
+MAT_FUNC_MAPPINGS = {
+	'NORMAL':  "/DatasmithBlenderContent/MaterialFunctions/MappingNormal",
+	'POINT':   "/DatasmithBlenderContent/MaterialFunctions/MappingPoint3D",
+	'TEXTURE': "/DatasmithBlenderContent/MaterialFunctions/MappingTexture3D",
+	'VECTOR':  "/DatasmithBlenderContent/MaterialFunctions/MappingVector",
+}
+
+def exp_mapping(node, exp_list):
+
+	mapping_func = MAT_FUNC_MAPPINGS[node.vector_type]
+	
+	n = Node("FunctionCall", { "Function": mapping_func })
 
 	input_vector = get_expression(node.inputs['Vector'], exp_list)
 	input_location = get_expression(node.inputs['Location'], exp_list)
@@ -1373,6 +1355,7 @@ def exp_blackbody(from_node, exp_list):
 	return {"expression": exp}
 
 def exp_shader_to_rgb(socket, exp_list):
+	log_warn("Unsupported material node 'Shader To RGB', lighting effects will be lost.", once=True)
 	shader_exp = get_expression(socket.node.inputs[0], exp_list)
 	basecolor = shader_exp.get("BaseColor")
 	emissive = shader_exp.get("EmissiveColor")
