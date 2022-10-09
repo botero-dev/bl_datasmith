@@ -123,20 +123,25 @@ def exp_texcoord_generated(exp_list):
 def exp_texcoord_node(socket, exp_list):
 	socket_name = socket.name
 	if socket_name == "Generated":
-		n = Node("FunctionCall", { "Function": MAT_FUNC_TEXCOORD_GENERATED })
-		return { "expression": exp_list.push(n) }
-	# if socket_name == "Normal":
+		output = Node("FunctionCall", { "Function": MAT_FUNC_TEXCOORD_GENERATED })
+		return { "expression": exp_list.push(output) }
+	if socket_name == "Normal":
+		output = Node("VertexNormalWS")
+		return { "expression": exp_list.push(output) }
 	if socket_name == "UV":
 		return exp_texcoord(exp_list)
 	if socket_name == "Object":
-		n = Node("FunctionCall", { "Function": op_custom_functions["LOCAL_POSITION"]})
-		return { "expression": exp_list.push(n) }
-	# if socket_name == "Camera":
-	#	`position from camera in camera space (blue is camera forward, green is camera up`
-	# if socket_name == "Window":
-	#	seems to be viewport coordinates
-	# if socket_name == "Reflection":
-	#	direction of reflection in world coordinates
+		output = Node("FunctionCall", { "Function": op_custom_functions["LOCAL_POSITION"]})
+		return { "expression": exp_list.push(output) }
+	if socket_name == "Camera":
+		output = Node("FunctionCall", { "Function": "/DatasmithBlenderContent/MaterialFunctions/TexCoord_Camera" })
+		return { "expression": exp_list.push(output) }
+	if socket_name == "Window":
+		output = Node("FunctionCall", { "Function": "/DatasmithBlenderContent/MaterialFunctions/TexCoord_Window" })
+		return { "expression": exp_list.push(output) }
+	if socket_name == "Reflection":
+		output = Node("ReflectionVectorWS")
+		return { "expression": exp_list.push(output) }
 
 
 tex_gradient_node_map = {
@@ -1072,7 +1077,6 @@ op_custom_functions = {
 	"MAPPING_TEX3D":      MAT_FUNC_MAPPING_TEX,
 	"MAPPING_NORMAL":     MAT_FUNC_MAPPING_NORMAL,
 	"NORMAL_FROM_HEIGHT": "/Engine/Functions/Engine_MaterialFunctions03/Procedurals/NormalFromHeightmap",
-	"WORLD_POSITION":     "/DatasmithBlenderContent/MaterialFunctions/BlenderWorldPosition",
 }
 
 
@@ -1229,36 +1233,35 @@ def exp_vector_rotate(socket, exp_list):
 def exp_new_geometry(socket, exp_list):
 	socket_name = socket.name
 	if socket_name == "Position":
-		blend = Node("FunctionCall", { "Function": op_custom_functions["WORLD_POSITION"]})
-		n = exp_list.push(blend)
-		return { "expression": n }
+		output = Node("FunctionCall", {"Function": "/DatasmithBlenderContent/MaterialFunctions/BlenderWorldPosition"})
+		return { "expression": exp_list.push(output) }
 	if socket_name == "Normal":
-		blend = Node("PixelNormalWS")
-		n = exp_list.push(blend)
-		return { "expression": n }
+		output = Node("VertexNormalWS")
+		return { "expression": exp_list.push(output) }
 	if socket_name == "Tangent":
-		blend = Node("VertexTangentWS")
-		n = exp_list.push(blend)
-		return { "expression": n }
+		output = Node("VertexTangentWS")
+		return { "expression": exp_list.push(output) }
 	if socket_name == "True Normal":
-		blend = Node("VertexNormalWS")
-		n = exp_list.push(blend)
-		return { "expression": n }
-	# if socket_name == "Incoming":
-	# 	this would be cameraposition - worldposition
-	# if socket_name == "Parametric":
-	#	this appears to be per-triangle barycentric coordinates
+		output = Node("VertexNormalWS")
+		return { "expression": exp_list.push(output) }
+	if socket_name == "Incoming":
+		output = Node("FunctionCall", {"Function": "/DatasmithBlenderContent/MaterialFunctions/Incoming"})
+		return { "expression": exp_list.push(output) }
 	if socket_name == "Backfacing":
 		global material_hint_twosided
 		material_hint_twosided = True
+		output = Node("FunctionCall", {"Function": "/DatasmithBlenderContent/MaterialFunctions/Backfacing"})
+		return { "expression": exp_list.push(output) }
 
-		backfacing_path = "/DatasmithBlenderContent/MaterialFunctions/Backfacing"
-		return exp_function_call(backfacing_path, inputs=None, exp_list=exp_list)
-	#	exactly what it says, I thought UE4 had this
+	if socket_name == "Parametric":
+		report_warn("Material data not supported. Node:Geometry Socket:Parametric", once=True)
+		return {"expression": exp_scalar(0.5, exp_list)}
 	if socket_name == "Pointiness":
-		exp = exp_scalar(0, exp_list)
-		return {"expression": exp}
-	# if socket_name == "Random Per Island":
+		report_warn("Material data not supported. Node:Geometry Socket:Pointiness", once=True)
+		return {"expression": exp_scalar(0.5, exp_list)}
+	if socket_name == "Random Per Island":
+		report_warn("Material data not supported. Node:Geometry Socket:Random Per Island", once=True)
+		return {"expression": exp_scalar(0, exp_list)}
 
 
 def exp_layer_weight(socket, exp_list):
