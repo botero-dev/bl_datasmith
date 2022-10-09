@@ -1178,6 +1178,20 @@ def exp_mapping(node, exp_list):
 	n.push(exp_input("3", input_scale))
 
 	return {"expression": exp_list.push(n)}
+
+def exp_normal(socket, exp_list):
+	node = socket.node
+	cached_node = cached_nodes.get(node)
+	if not cached_node:
+		n = Node("FunctionCall", { "Function": "/DatasmithBlenderContent/MaterialFunctions/Normal" })
+		push_exp_input(n, "0", exp_vector(node.outputs[0].default_value, exp_list))
+		push_exp_input(n, "1", get_expression(node.inputs[0], exp_list))
+		exp = exp_list.push(n)
+		cached_node = (exp, ("Normal", "Dot"))
+		cached_nodes[node] = cached_nodes
+	output_index = cached_node[1].index(socket.name)
+	return {"expression": cached_node[0], "OutputIndex": output_index}
+
 def exp_normal_map(socket, exp_list):
 	node_input = socket.node.inputs['Color']
 	# hack: is it safe to assume that everything under here is normal?
@@ -2076,7 +2090,8 @@ def get_expression_inner(socket, exp_list, target_socket):
 	# if node.type == 'DISPLACEMENT':
 	if node.type == 'MAPPING':
 		return exp_mapping(node, exp_list)
-	# if node.type == 'NORMAL':
+	if node.type == 'NORMAL':
+		return exp_normal(socket, exp_list)
 	if node.type == 'NORMAL_MAP':
 		return exp_normal_map(socket, exp_list)
 	# if node.type == 'CURVE_VEC':
