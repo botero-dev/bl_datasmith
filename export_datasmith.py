@@ -218,7 +218,7 @@ def exp_tex_image(socket, exp_list):
 				mask.push(exp_input("0", tex_coord))
 				tex_coord_exp = { "expression": exp_list.push(mask) }
 			else:
-				log.error("node TEXTURE_COORDINATE has unhandled projection: %s" % node.projection)
+				log.error("node TEX_IMAGE has unhandled projection: %s" % node.projection)
 
 
 		if tex_coord_exp:
@@ -2158,7 +2158,7 @@ def pbr_nodetree_material(material):
 	)
 
 	if not output_node:
-		log.warn("material %s with use_nodes does not have nodes" % material.name)
+		report_warn("Material %s with use_nodes does not have nodes", material.name, once=True)
 		return n
 
 	exp_list = Node("Expressions")
