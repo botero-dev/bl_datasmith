@@ -154,7 +154,7 @@ tex_gradient_node_map = {
 	'RADIAL':           "/DatasmithBlenderContent/MaterialFunctions/TexGradient_Radial",
 }
 
-
+NODE_TEX_GRADIENT_OUTPUTS = ("Color", "Fac")
 def exp_tex_gradient(socket, exp_list):
 	node = socket.node
 	gradient_type = node.gradient_type
@@ -165,88 +165,75 @@ def exp_tex_gradient(socket, exp_list):
 	vector_exp = get_expression_mapped(node.inputs['Vector'], exp_list, exp_texcoord_generated)
 	push_exp_input(n, "0", vector_exp)
 
-	out_socket = 0
-	if socket.name == "Fac":
-		out_socket = 1
-
-	return { "expression": exp_list.push(n), "OutputIndex":out_socket }
+	exp_idx = exp_list.push(n)
+	cached_node = (exp_idx, NODE_TEX_GRADIENT_OUTPUTS)
+	cached_nodes[node] = cached_node
+	return exp_from_cache(cached_node, socket.name)
 
 VEC_ZERO = Vector()
 ROT_ZERO = Euler()
 VEC_ONE = Vector((1,1,1))
 
 
-
+NODE_TEX_IMAGE_OUTPUTS = ("Color", 0, 0, 0, "Alpha")
 def exp_tex_image(socket, exp_list):
-	cached_node = None
 	node = socket.node
-	# we specially cache this in reverse_expressions by node (and not by socket)
-	# so we reuse the node when we find connections to the alpha socket
-	# this shouldn't be needed if we moved the whole reverse_expressions logic
-	# to happen with both nodes and sockets at the same time (in the future maybe)
-	if node in reverse_expressions:
-		cached_node = reverse_expressions[node]
 
-	if cached_node == None:
-		image = node.image
-		if not image:
-			return { "expression": exp_scalar(0, exp_list) }
+	image = node.image
+	if not image:
+		return { "expression": exp_scalar(0, exp_list) }
 
-		name = sanitize_name(image.name) # name_full?
-		should_whitelist = False
-		# we use this to know if this texture is behind a normalmap node, so
-		# we mark it as non-sRGB+invert green channel
-		texture_type = get_context() or 'SRGB' 
-		if texture_type == MAT_CTX_BUMP:
-			should_whitelist = True
-			texture_type = 'SRGB'
-		# ensure that texture is exported
-		get_or_create_texture(name, image, texture_type)
+	name = sanitize_name(image.name) # name_full?
+	should_whitelist = False
+	# we use this to know if this texture is behind a normalmap node, so
+	# we mark it as non-sRGB+invert green channel
+	texture_type = get_context() or 'SRGB' 
+	if texture_type == MAT_CTX_BUMP:
+		should_whitelist = True
+		texture_type = 'SRGB'
+	# ensure that texture is exported
+	get_or_create_texture(name, image, texture_type)
 
-		texture_exp = exp_texture(name)
+	texture_exp = exp_texture(name)
 
-		tex_coord = get_expression_mapped(node.inputs['Vector'], exp_list, exp_texcoord)
+	tex_coord = get_expression_mapped(node.inputs['Vector'], exp_list, exp_texcoord)
 
-		tex_coord_exp = None
-		if tex_coord:
-			proj = None
-			if node.projection == 'FLAT':
-				proj = Node("ComponentMask")
-			elif node.projection == 'BOX':
-				proj = Node("FunctionCall", { "Function": "/DatasmithBlenderContent/MaterialFunctions/TexImage_ProjBox"})
-			elif node.projection == 'SPHERE':
-				proj = Node("FunctionCall", { "Function": "/DatasmithBlenderContent/MaterialFunctions/TexImage_ProjSphere"})
-			elif node.projection == 'TUBE':
-				proj = Node("FunctionCall", { "Function": "/DatasmithBlenderContent/MaterialFunctions/TexImage_ProjTube"})
-			else:
-				log.error("node TEX_IMAGE has unhandled projection: %s" % node.projection)
+	tex_coord_exp = None
+	if tex_coord:
+		proj = None
+		if node.projection == 'FLAT':
+			proj = Node("ComponentMask")
+		elif node.projection == 'BOX':
+			proj = Node("FunctionCall", { "Function": "/DatasmithBlenderContent/MaterialFunctions/TexImage_ProjBox"})
+		elif node.projection == 'SPHERE':
+			proj = Node("FunctionCall", { "Function": "/DatasmithBlenderContent/MaterialFunctions/TexImage_ProjSphere"})
+		elif node.projection == 'TUBE':
+			proj = Node("FunctionCall", { "Function": "/DatasmithBlenderContent/MaterialFunctions/TexImage_ProjTube"})
+		else:
+			log.error("node TEX_IMAGE has unhandled projection: %s" % node.projection)
 
-			push_exp_input(proj, "0", tex_coord)
-			tex_coord_exp = { "expression": exp_list.push(proj) }
+		push_exp_input(proj, "0", tex_coord)
+		tex_coord_exp = { "expression": exp_list.push(proj) }
 
-		if tex_coord_exp:
+	if tex_coord_exp:
 
-			if USE_TEXCOORD_FLIP_Y:
-				flip = Node("FunctionCall", { "Function": MAT_FUNC_FLIPY })
-				push_exp_input(flip, "0", tex_coord_exp)
-				tex_coord_exp = {"expression": exp_list.push(flip)}
+		if USE_TEXCOORD_FLIP_Y:
+			flip = Node("FunctionCall", { "Function": MAT_FUNC_FLIPY })
+			push_exp_input(flip, "0", tex_coord_exp)
+			tex_coord_exp = {"expression": exp_list.push(flip)}
 
 
-			texture_exp.push(Node("Coordinates", tex_coord_exp))
+		texture_exp.push(Node("Coordinates", tex_coord_exp))
 
-		cached_node = exp_list.push(texture_exp)
-		reverse_expressions[node] = cached_node
+	exp_idx = exp_list.push(texture_exp)
+	cached_node = (exp_idx, NODE_TEX_IMAGE_OUTPUTS)
+	cached_nodes[node] = cached_node
 
-		if should_whitelist:
-			whitelisted_textures.append({ "expression": cached_node })
+	if should_whitelist:
+		whitelisted_textures.append({ "expression": cached_node[0] })
 
-	output_index = 0 # RGB
-	# indices 1, 2, 3 are separate RGB channels in unreal
-	if socket.name == 'Alpha':
-		output_index = 4 #
-
-	return { "expression": cached_node, "OutputIndex": output_index }
-
+	return exp_from_cache(cached_node, socket.name)
+	
 
 
 # the generator param is a function that receives the exp_list and returns
@@ -304,6 +291,9 @@ def exp_wireframe(socket, exp_list):
 	report_warn("Unsupported node 'Wireframe'. Writing value 0.", once=True)
 	return {"expression": exp_scalar(0, exp_list)}
 
+
+NODE_TEX_BRICK_OUTPUTS = ("Color", "Fac")
+
 def exp_tex_brick(socket, exp_list):
 
 	node = socket.node
@@ -328,14 +318,14 @@ def exp_tex_brick(socket, exp_list):
 	push_exp_input(n, "12", exp_scalar(node.squash, exp_list))
 	push_exp_input(n, "13", exp_scalar(node.squash_frequency, exp_list))
 		
-	out_socket = 0
-	if socket.name == "Fac":
-		out_socket = 1
-	return { "expression": exp_list.push(n), "OutputIndex":out_socket }
+	exp_idx = exp_list.push(n)
+	cached_node = (exp_idx, NODE_TEX_BRICK_OUTPUTS)
+	cached_nodes[node] = cached_node
+	return exp_from_cache(cached_node, socket.name)
 
 
 
-
+NODE_TEX_MAGIC_OUTPUTS = ("Color", "Fac")
 def exp_tex_magic(socket, exp_list):
 
 	node = socket.node
@@ -350,12 +340,10 @@ def exp_tex_magic(socket, exp_list):
 	push_exp_input(n, "2", get_expression(inputs["Distortion"], exp_list))
 	push_exp_input(n, "3", exp_scalar(node.turbulence_depth, exp_list))
 
-	out_socket = 0
-	if socket.name == "Fac":
-		out_socket = 1
-	return { "expression": exp_list.push(n), "OutputIndex":out_socket }
-
-
+	exp_idx = exp_list.push(n)
+	cached_node = (exp_idx, NODE_TEX_MAGIC_OUTPUTS)
+	cached_nodes[node] = cached_node
+	return exp_from_cache(cached_node, socket.name)
 
 
 tex_dimensions_map = {
@@ -440,7 +428,7 @@ def exp_tex_musgrave(socket, exp_list):
 
 	return { "expression": exp_list.push(n) }
 
-
+NODE_TEX_NOISE_OUTPUTS = ("Fac", "Color")
 def exp_tex_noise(socket, exp_list):
 
 	node = socket.node
@@ -470,10 +458,12 @@ def exp_tex_noise(socket, exp_list):
 	push_input("Roughness")
 	push_input("Distortion")
 
-	out_socket = 0
-	if socket.name == "Color":
-		out_socket = 1
-	return { "expression": exp_list.push(n), "OutputIndex":out_socket }
+
+	exp_idx = exp_list.push(n)
+	cached_node = (exp_idx, NODE_TEX_NOISE_OUTPUTS)
+	cached_nodes[node] = cached_node
+	return exp_from_cache(cached_node, socket.name)
+
 
 # these are encoded as float values when sent to the shader code
 tex_voronoi_metric_map = {
@@ -541,37 +531,26 @@ def exp_tex_voronoi(socket, exp_list):
 		metric_float = tex_voronoi_metric_map[metric]
 		n.push(exp_input(input_idx, exp_scalar(metric_float, exp_list)))
 
-	socket_indices = None
-	out_socket = 0
+	NODE_TEX_VORONOI_OUTPUTS = None
 	if voronoi_type == 'DISTANCE_TO_EDGE':
-		socket_indices = {"Distance": 0}
+		NODE_TEX_VORONOI_OUTPUTS = ("Distance", )
 	elif voronoi_type == 'N_SPHERE_RADIUS':
-		socket_indices = {"Radius": 0}
+		NODE_TEX_VORONOI_OUTPUTS = ("Radius", )
 	else:
-		socket_indices = {
-			"Distance": 0,
-			"Color": 1,
-		}
 		if dimensions == "1d":
-			socket_indices["W"] = 2
+			NODE_TEX_VORONOI_OUTPUTS = ("Distance", "Color", "W")
 		else:
-			socket_indices["Position"] = 2
-			if dimensions == "4d":
-				socket_indices["W"] = 3
+			if dimensions != "4d":
+				NODE_TEX_VORONOI_OUTPUTS = ("Distance", "Color", "Position")
+			else:
+				NODE_TEX_VORONOI_OUTPUTS = ("Distance", "Color", "Position", "W")
 
+	exp_idx = exp_list.push(n)
+	cached_node = (exp_idx, NODE_TEX_VORONOI_OUTPUTS)
+	cached_nodes[node] = cached_node
+	return exp_from_cache(cached_node, socket.name)
 
-	out_socket = socket_indices[socket.name]
-	'''
-	if not out_socket:
-		# corner case: there was a link to the node when it was set as 4d, 
-		# but if the node was then changed to 3d, the link still exists.
-		# the blender UI breaks because it doesn't show what will happen at
-		# that point, maybe submit a bug report in blender?
-		return None
-	'''
-	return { "expression": exp_list.push(n), "OutputIndex":out_socket }
-
-
+NODE_TEX_WAVE_OUTPUTS = ("Color", "Fac")
 def exp_tex_wave(socket, exp_list):
 
 	node = socket.node
@@ -602,21 +581,19 @@ def exp_tex_wave(socket, exp_list):
 	push_exp_input(n, "7", exp_scalar(wave_type_val, exp_list))
 	push_exp_input(n, "8", exp_scalar(direction_val, exp_list))
 	push_exp_input(n, "9", exp_scalar(profile_val, exp_list))
-		
-	out_socket = 0
-	if socket.name == "Fac":
-		out_socket = 1
-	return { "expression": exp_list.push(n), "OutputIndex":out_socket }
+	
+	exp_idx = exp_list.push(n)
+	cached_node = (exp_idx, NODE_TEX_WAVE_OUTPUTS)
+	cached_nodes[node] = cached_node
+	return exp_from_cache(cached_node, socket.name)
+
+
 
 
 NODE_TEX_CHECKER_OUTPUTS = ("Color", "Fac")
 
 def exp_tex_checker(socket, exp_list):
 	node = socket.node
-	cached_node = cached_nodes.get(node)
-	if cached_node:
-		output_index = cached_node[1].index(socket.name)
-		return {"expression": cached_node[0], "OutputIndex": output_index}
 
 	inputs = node.inputs
 	n = Node("FunctionCall", {"Function": "/DatasmithBlenderContent/MaterialFunctions/TexChecker"})
@@ -627,12 +604,10 @@ def exp_tex_checker(socket, exp_list):
 	push_exp_input(n, "3", get_expression(inputs["Scale"], exp_list))
 	
 	exp_idx = exp_list.push(n)
-	cached_nodes[socket.node] = (exp_idx, NODE_TEX_CHECKER_OUTPUTS)
+	cached_node = (exp_idx, NODE_TEX_CHECKER_OUTPUTS)
+	cached_nodes[node] = cached_node
 
-	# could be faster by comparing to constants instead?
-	output_index = NODE_TEX_CHECKER_OUTPUTS.index(socket.name)
-
-	return {"expression": exp_idx, "OutputIndex": output_index}
+	return exp_from_cache(cached_node, socket.name)
 
 
 def exp_uvmap(node, exp_list):
@@ -701,37 +676,30 @@ def exp_make_hsv(socket, exp_list):
 	push_exp_input(output, "2", get_expression(inputs[2], exp_list))
 	return { "expression": exp_list.push(output) }
 
-
+NODE_BREAK_RGB_OUTPUTS = ('R', 'G', 'B')
+NODE_BREAK_XYZ_OUTPUTS = ('X', 'Y', 'Z')
 MAT_FUNC_BREAK_FLOAT3 = "/Engine/Functions/Engine_MaterialFunctions02/Utility/BreakOutFloat3Components"
 def exp_break_vec3(socket, exp_list):
-	expression_idx = -1
-	if socket.node in cached_nodes:
-		expression_idx = cached_nodes[socket.node][0]
-	else:
-		output = Node("FunctionCall",  { "Function": MAT_FUNC_BREAK_FLOAT3 })
-		output.push(exp_input("0", get_expression(socket.node.inputs[0], exp_list)))
-		expression_idx = exp_list.push(output)
-		cached_nodes[socket.node] = (expression_idx, ) # TODO: this should be filled with 'R','G','B' or XYZ mapping
+	node = socket.node
+	output = Node("FunctionCall",  { "Function": MAT_FUNC_BREAK_FLOAT3 })
+	output.push(exp_input("0", get_expression(node.inputs[0], exp_list)))
+	expression_idx = exp_list.push(output)
 
-	output_index = socket.node.outputs.find(socket.name) # could be faster by comparing to constants instead?
-	return { "expression": expression_idx, "OutputIndex": output_index }
+	reverse_map = NODE_BREAK_RGB_OUTPUTS if node.type == 'SEPRGB' else NODE_BREAK_XYZ_OUTPUTS
+	cached_node = (expression_idx, reverse_map) 
+	cached_nodes[node] = cached_node
+	return exp_from_cache(cached_node, socket.name)
 
 NODE_BREAK_HSV_OUTPUTS = ("H", "S", "V")
 def exp_break_hsv(socket, exp_list):
 
-	expression_idx = -1
-	cached_node = cached_nodes.get(socket.node)
-	if cached_node:
-		output_index = cached_node[1].index(socket.name)
-		return {"expression": cached_node[0], "OutputIndex": output_index}
-
 	output = Node("FunctionCall",  { "Function": "/DatasmithBlenderContent/MaterialFunctions/RGB_To_HSV" })
 	push_exp_input(output, "0", get_expression(socket.node.inputs[0], exp_list))
 	expression_idx = exp_list.push(output)
-	cached_nodes[socket.node] = (expression_idx, NODE_BREAK_HSV_OUTPUTS)
 
-	output_index = NODE_BREAK_HSV_OUTPUTS.index(socket.name) 
-	return { "expression": expression_idx, "OutputIndex": output_index }
+	cached_node = (expression_idx, NODE_BREAK_HSV_OUTPUTS)
+	cached_nodes[socket.node] = cached_node
+	return exp_from_cache(cached_node, socket.name)
 
 
 MATH_CUSTOM_FUNCTIONS = {
@@ -1172,18 +1140,17 @@ def exp_mapping(node, exp_list):
 
 	return {"expression": exp_list.push(n)}
 
+NODE_NORMAL_OUTPUTS = ("Normal", "Dot")
 def exp_normal(socket, exp_list):
 	node = socket.node
-	cached_node = cached_nodes.get(node)
-	if not cached_node:
-		n = Node("FunctionCall", { "Function": "/DatasmithBlenderContent/MaterialFunctions/Normal" })
-		push_exp_input(n, "0", exp_vector(node.outputs[0].default_value, exp_list))
-		push_exp_input(n, "1", get_expression(node.inputs[0], exp_list))
-		exp = exp_list.push(n)
-		cached_node = (exp, ("Normal", "Dot"))
-		cached_nodes[node] = cached_nodes
-	output_index = cached_node[1].index(socket.name)
-	return {"expression": cached_node[0], "OutputIndex": output_index}
+	n = Node("FunctionCall", { "Function": "/DatasmithBlenderContent/MaterialFunctions/Normal" })
+	push_exp_input(n, "0", exp_vector(node.outputs[0].default_value, exp_list))
+	push_exp_input(n, "1", get_expression(node.inputs[0], exp_list))
+	exp = exp_list.push(n)
+	
+	cached_node = (exp, NODE_NORMAL_OUTPUTS)
+	cached_nodes[node] = cached_node
+	return exp_from_cache(cached_node, socket.name)
 
 def exp_normal_map(socket, exp_list):
 	node_input = socket.node.inputs['Color']
@@ -1774,15 +1741,21 @@ def get_expression(field, exp_list, force_default=False, skip_default_warn=False
 	return return_exp
 
 
-
+def exp_from_cache(cached_node, socket_name):
+	output_index = cached_node[1].index(socket_name)
+	return {"expression": cached_node[0], "OutputIndex": output_index}
 
 def get_expression_inner(socket, exp_list, target_socket):
-	node = socket.node
 
 	# if this node is already exported, connect to that instead
 	# I am considering in
 	if socket in reverse_expressions:
 		return reverse_expressions[socket]
+
+	node = socket.node
+	cached_node = cached_nodes.get(node)
+	if cached_node:
+		return exp_from_cache(cached_node, socket.name)
 
 	# The cases are ordered like in blender Add menu, others first, shaders second, then the rest
 
