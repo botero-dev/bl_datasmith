@@ -668,9 +668,26 @@ def exp_make_vec3(socket, exp_list):
 	output.push(exp_input("2", get_expression(node.inputs[2], exp_list)))
 	return { "expression": exp_list.push(output) }
 
+MAT_FUNC_HSV_TO_RGB = "/DatasmithBlenderContent/MaterialFunctions/HSV_To_RGB"
 def exp_make_hsv(socket, exp_list):
 	inputs = socket.node.inputs
-	output = Node("FunctionCall",  { "Function": "/DatasmithBlenderContent/MaterialFunctions/HSV_To_RGB" })
+	output = Node("FunctionCall",  { "Function": MAT_FUNC_HSV_TO_RGB })
+	push_exp_input(output, "0", get_expression(inputs[0], exp_list))
+	push_exp_input(output, "1", get_expression(inputs[1], exp_list))
+	push_exp_input(output, "2", get_expression(inputs[2], exp_list))
+	return { "expression": exp_list.push(output) }
+
+NODE_COMBINE_COLOR_MAP = {
+	"RGB": MAT_FUNC_MAKE_FLOAT3,
+	"HSV": MAT_FUNC_HSV_TO_RGB,
+	#TODO: implement HSL
+}
+
+def exp_combine_color(socket, exp_list):
+	node = socket.node
+	func_path = NODE_COMBINE_COLOR_MAP[node.mode]
+	output = Node("FunctionCall",  { "Function": func_path })
+	inputs = node.inputs
 	push_exp_input(output, "0", get_expression(inputs[0], exp_list))
 	push_exp_input(output, "1", get_expression(inputs[1], exp_list))
 	push_exp_input(output, "2", get_expression(inputs[2], exp_list))
@@ -690,15 +707,39 @@ def exp_break_vec3(socket, exp_list):
 	cached_nodes[node] = cached_node
 	return exp_from_cache(cached_node, socket.name)
 
+
+MAT_FUNC_RGB_TO_HSV = "/DatasmithBlenderContent/MaterialFunctions/RGB_To_HSV"
 NODE_BREAK_HSV_OUTPUTS = ("H", "S", "V")
 def exp_break_hsv(socket, exp_list):
 
-	output = Node("FunctionCall",  { "Function": "/DatasmithBlenderContent/MaterialFunctions/RGB_To_HSV" })
+	output = Node("FunctionCall",  { "Function": MAT_FUNC_RGB_TO_HSV })
 	push_exp_input(output, "0", get_expression(socket.node.inputs[0], exp_list))
 	expression_idx = exp_list.push(output)
 
 	cached_node = (expression_idx, NODE_BREAK_HSV_OUTPUTS)
 	cached_nodes[socket.node] = cached_node
+	return exp_from_cache(cached_node, socket.name)
+
+
+# outputs are always called Red, Green, Blue even if mode is HSV
+NODE_SEPARATE_COLOR_OUTPUTS = ("Red", "Green", "Blue")
+NODE_SEPARATE_COLOR_MAP = {
+	"RGB": MAT_FUNC_BREAK_FLOAT3,
+	"HSV": MAT_FUNC_RGB_TO_HSV,
+	#TODO: implement HSL
+}
+
+def exp_separate_color(socket, exp_list):
+	node = socket.node
+
+	func_path = NODE_SEPARATE_COLOR_MAP[node.mode]
+
+	output = Node("FunctionCall",  { "Function": func_path })
+	push_exp_input(output, "0", get_expression(node.inputs[0], exp_list))
+	expression_idx = exp_list.push(output)
+
+	cached_node = (expression_idx, NODE_SEPARATE_COLOR_OUTPUTS)
+	cached_nodes[node] = cached_node
 	return exp_from_cache(cached_node, socket.name)
 
 
@@ -1600,7 +1641,7 @@ def exp_ambient_occlusion(socket, exp_list):
 	socket_name = socket.name
 	if socket_name == "Color":
 		report_warn("Unsupported material node: AMBIENT_OCCLUSION, exporting plain color instead")
-		ao_node = socket.node_tree
+		ao_node = socket.node
 		color_input = ao_node.inputs["Color"]
 		return get_expression(color_input, exp_list)
 	elif socket_name == "AO":
@@ -2145,12 +2186,15 @@ def get_expression_inner(socket, exp_list, target_socket):
 		exp = exp_color_ramp(node, exp_list)
 		return {"expression": exp, "OutputIndex": 0}
 
+
 	if node.type == 'COMBRGB':
 		return exp_make_vec3(socket, exp_list)
 	if node.type == 'COMBXYZ':
 		return exp_make_vec3(socket, exp_list)
 	if node.type == 'COMBHSV':
 		return exp_make_hsv(socket, exp_list)
+	if node.type == 'COMBINE_COLOR':
+		return exp_combine_color(socket, exp_list)
 
 	if node.type == 'SEPRGB':
 		return exp_break_vec3(socket, exp_list)
@@ -2158,6 +2202,8 @@ def get_expression_inner(socket, exp_list, target_socket):
 		return exp_break_vec3(socket, exp_list)
 	if node.type == 'SEPHSV':
 		return exp_break_hsv(socket, exp_list)
+	if node.type == 'SEPARATE_COLOR':
+		return exp_separate_color(socket, exp_list)
 
 	if node.type == 'RGBTOBW':
 		return exp_rgb_to_bw(socket, exp_list)
@@ -2973,6 +3019,9 @@ def collect_environment(world):
 	nodes = world.node_tree
 	output = nodes.get_output_node('EEVEE') or nodes.get_output_node('ALL') or nodes.get_output_node('CYCLES')
 	background_node = output.inputs['Surface'].links[0].from_node
+	while background_node.type == "REROUTE":
+		background_node = background_node.inputs[0].links[0].from_node
+
 	if not 'Color' in background_node.inputs:
 		return
 	if not background_node.inputs['Color'].links:
