@@ -11,7 +11,14 @@
 	"MarketplaceURL": "",
 	"SupportURL": "",
 	"CanContainContent": true,
-	"IsBetaVersion": true,
+	"IsBetaVersion": false,
 	"IsExperimentalVersion": false,
-	"Installed": false
+	"Installed": false,
+	"Modules": [
+		{
+			"Name": "DatasmithBlenderContent",
+			"Type": "Runtime",
+			"LoadingPhase": "Default"
+		}
+	]
 }
