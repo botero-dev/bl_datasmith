@@ -31,7 +31,7 @@ $build_path = "$base_path/build/$target_name"
 $target_path = "$build_path/DatasmithBlenderContent"
 
 Write-Output "Cleaning $target_path folder"
-Remove-Item $target_path -Recurse
+Remove-Item $target_path -Recurse -ErrorAction SilentlyContinue
 
 Write-Output "Creating $target_path folder"
 New-Item -ItemType directory -Path $target_path
