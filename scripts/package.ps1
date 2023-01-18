@@ -15,6 +15,8 @@ if (Test-Path -Path $build_path) {
 New-Item -ItemType directory -Path $build_path
 
 & scripts/export_bl.ps1
+
+& scripts/build_all.ps1
 & scripts/export_ue_all.ps1
 
 
