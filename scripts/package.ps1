@@ -4,7 +4,7 @@ $base_path = "$PSScriptRoot/.."
 
 Push-Location $base_path
 
-$build_path = "build"
+$build_path = "export"
 
 
 if (Test-Path -Path $build_path) {

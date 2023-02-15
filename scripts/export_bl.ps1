@@ -6,7 +6,7 @@ Push-Location $base_path
 
 & scripts/setup_bl.ps1
 
-$build_path = "build"
+$build_path = "export"
 
 
 if (Test-Path -Path $build_path) {
