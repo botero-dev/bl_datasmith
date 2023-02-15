@@ -26,7 +26,7 @@ if (!$target_name) {
 
 $source_path = "$template_path/Plugins/DatasmithBlenderContent"
 
-$build_path = "$base_path/build/$target_name"
+$build_path = "$base_path/export/$target_name"
 
 $target_path = "$build_path/DatasmithBlenderContent"
 
