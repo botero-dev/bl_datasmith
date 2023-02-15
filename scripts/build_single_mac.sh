@@ -1,4 +1,4 @@
-# /usr/bin/env bash
+#!/usr/bin/env bash
 
 script_file="$0"
 script_dir=$(dirname "${BASH_SOURCE[0]}")
