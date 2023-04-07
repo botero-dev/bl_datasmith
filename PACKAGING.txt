@@ -1,0 +1,12 @@
+Blender Datasmith exporter packaging info
+=========================================
+
+The built package consists on the following:
+
+* Blender plugin zip file, to be installed from the Blender settings menu.
+* Blender plugin in a folder, to be copied to the Blender addons folder.
+* Unreal plugin, in the "Plugins" folder, to be merged into an existing Unreal project.
+
+TODO: see the package structure for the epic games posting, they compile the plugin themselves, so we don't need to compile it.
+
+
