@@ -2,7 +2,6 @@
 
 $base_path = "$PSScriptRoot/.."
 
-Push-Location $base_path
 
 $target_path = "$base_path/addons"
 

@@ -7,8 +7,14 @@ param (
     [switch] $diff = $false,
     [switch] $animations = $false,
     [switch] $fast = $false,
-    [switch] $b3 = $false
+    [switch] $b3 = $false,
+    [string] $force_version
 )
+
+if ($PSVersionTable.PSEdition -ne "Core") {
+    Write-Host "This script was meant to be run from Powershell Core"
+    exit 1
+}
 
 
 $scripts_folder = $PSScriptRoot
@@ -28,9 +34,9 @@ $versions = @{
 # TODO: make two phase export
 $files_to_build = $()
 
-$null = New-Item -Path "$root_folder/export" -ItemType directory -ErrorAction SilentlyContinue
-$report_path = "$root_folder/export/report.csv"
-echo "file,status,time_seconds" > $report_path
+$null = New-Item -Path "$root_folder/export/demos" -ItemType directory -ErrorAction SilentlyContinue
+$report_path = "$root_folder/export/demos/report.csv"
+echo "dir,name,status,time_seconds" > $report_path
 
 foreach ($test_row in $test_csv_rows) {
 
@@ -64,14 +70,26 @@ foreach ($test_row in $test_csv_rows) {
     $base_file_name = [System.IO.Path]::GetFileNameWithoutExtension($base_file_path)
     $target_file_path = "$target_file_dir/${base_file_name}.udatasmith"
 
-    $ver = $versions[$test_row.version]
+    $desired_version = $test_row.version
+    if ([boolean]$force_version) {
+        $desired_version = $force_version
+    }
+
+    $ver = $versions[$desired_version]
     $blender_path = $(& "$scripts_folder/get_blender.ps1" -version $ver["version"] -patch $ver["patch"])
+
+
+    $env:BLENDER_USER_SCRIPTS = "$root_folder"
 
     $command = @(
         "&", $blender_path,
         "-b", $file_path,
+        #"--log-level", "-1",
+        #"--log-file", "${target_file_path}.log",
+        #"--debug-all", 
+        "--addons", "vertexforge",
         "--python-exit-code", "17",
-        "-P", "$scripts_folder/bl_export_datasmith.py",
+        "--python", "$scripts_folder/bl_export_datasmith.py",
         "--",
         "--output", $target_file_path
     )
@@ -87,6 +105,6 @@ foreach ($test_row in $test_csv_rows) {
     $last_result = $LASTEXITCODE
     $time_seconds = $time.TotalSeconds
     echo "($last_result) File $base_file_name took $time_seconds seconds."
-    echo "$base_file_name,$last_result,$time_seconds" >> $report_path
+    echo "$base_file_dir,$base_file_name,$last_result,$time_seconds" >> $report_path
 
 }
