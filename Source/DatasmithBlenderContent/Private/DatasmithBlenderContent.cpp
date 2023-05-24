@@ -9,9 +9,23 @@
 void FDatasmithBlenderContentModule::StartupModule()
 {
 	// This code will execute after your module is loaded into memory; the exact timing is specified in the .uplugin file per-module
+	bool bPathFound = false;
 
-	FString ShaderDir = FPaths::Combine(FPaths::ProjectPluginsDir(), TEXT("DatasmithBlenderContent/Shaders"));
-	AddShaderSourceDirectoryMapping("/Plugin/DatasmithBlenderContent", ShaderDir);
+	FString ProjectPluginShaderDir = FPaths::Combine(FPaths::ProjectPluginsDir(), TEXT("DatasmithBlenderContent/Shaders"));
+	FString EnginePluginShaderDir = FPaths::Combine(FPaths::EnginePluginsDir(), TEXT("DatasmithBlenderContent/Shaders"));
+
+	if (FPaths::DirectoryExists(ProjectPluginShaderDir))
+	{
+		AddShaderSourceDirectoryMapping("/Plugin/DatasmithBlenderContent", ProjectPluginShaderDir);
+		bPathFound = true;
+	}
+	else if (FPaths::DirectoryExists(EnginePluginShaderDir))
+	{
+		AddShaderSourceDirectoryMapping("/Plugin/DatasmithBlenderContent", EnginePluginShaderDir);
+		bPathFound = true;
+	}
+
+	check(bPathFound);
 }
 
 void FDatasmithBlenderContentModule::ShutdownModule()
