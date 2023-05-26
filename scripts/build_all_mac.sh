@@ -6,18 +6,22 @@ script_file="$0"
 script_dir=$(dirname "${BASH_SOURCE[0]}")
 
 base_path="$script_dir/.."
-
-
-
-ue4_path="/Users/Shared/Epic Games/UE_4.27"
-ue51_path="/Users/Shared/Epic Games/UE_5.1"
-ue52_path="/Users/Shared/Epic Games/UE_5.2"
-
-pushd "$base_path"
+pushd "$base_path" > /dev/null
 base_path=$(pwd)
+popd > /dev/null
 
-scripts/build_single_mac.sh --target_path "$base_path/build/ue427" --ue_path "$ue4_path"
-#scripts/build_single_mac.sh --target_path "$base_path/build/ue51" --ue_path "$ue51_path"
-#scripts/build_single_mac.sh --target_path "$base_path/build/ue52" --ue_path "$ue52_path"
+launcher_apps="$HOME/Library/Application Support/Epic/UnrealEngineLauncher/LauncherInstalled.dat"
 
-popd
+engine_versions=(
+    "UE_4.27"
+    "UE_5.1"
+    "UE_5.2"
+)
+
+# Iterate over the list and call echo with each string
+for version in "${engine_versions[@]}"; do
+	ue_path=$("$base_path/scripts/get_path_for_ue.py" "$launcher_apps" "$version")
+	target_path="$base_path/build/mac/$version"
+	"$base_path/scripts/build_single_mac.sh" --target_path "$target_path" --ue_path "$ue_path"
+done
+

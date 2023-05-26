@@ -5,13 +5,12 @@ script_dir=$(dirname "${BASH_SOURCE[0]}")
 
 base_path="$script_dir/.."
 
-cd "$base_path"
+pushd "$base_path" > /dev/null
 base_path=$(pwd)
-
+popd > /dev/null
 
 target_path=""
 ue_path=""
-is_ue5=""
 
 while [[ $# -gt 0 ]]; do
   case $1 in
@@ -32,33 +31,28 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [ -z "$target_path" ]; then
-	echo "Usage: $script_file --target_path TARGET_PATH --ue_path UE_PATH [--is_ue5]"
+	echo "Usage: $script_file --target_path TARGET_PATH --ue_path UE_PATH"
 	exit 1
 fi
 
 if [ -z "$ue_path" ]; then
-	echo "Usage: $script_file --target_path TARGET_PATH --ue_path UE_PATH [--is_ue5]"
+	echo "Usage: $script_file --target_path TARGET_PATH --ue_path UE_PATH"
 	exit 1
 fi
 
 
 target_path="$target_path/DatasmithBlenderContent"
 
-echo "running build script with params:"
-echo "target_path=$target_path"
-echo "ue_path=$ue_path"
-echo "==============================================================="
 
-
-#mkdir "$target_path/Plugins"
-
+echo "Cloning UE plugin repo"
+# TODO: maybe don't clone the repo and get the path as argument instead
 plugin_remote_path="git@github.com:vertexforge/DatasmithBlenderContent.git"
 plugin_path="$base_path/DatasmithBlenderContent"
 git clone $plugin_remote_path "$plugin_path"
 
 
+echo "Running UAT BuildPlugin"
 
-# this way uses Unreal Automation Tool instead, which could open other options maybe?
 uat_path="$ue_path/Engine/Build/BatchFiles/RunUAT.command"
 
 "$uat_path" BuildPlugin "-plugin=$plugin_path/DatasmithBlenderContent.uplugin" "-package=$target_path"
