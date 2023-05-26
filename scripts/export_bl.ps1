@@ -1,44 +1,41 @@
 
 
-$base_path = "$PSScriptRoot/.."
+$base_path = Resolve-Path "$PSScriptRoot/.."
 
-Push-Location $base_path
+& $base_path/scripts/setup_bl.ps1
 
-& scripts/setup_bl.ps1
-
-$build_path = "export"
-
-
-if (Test-Path -Path $build_path) {
-    Write-Output "Cleaning output dir: $build_path"
-    Remove-Item "$build_path" -Recurse
-}
-
-New-Item -ItemType directory -Path $build_path
+# assumed to exist because of .keep file
+$build_folder = "$base_path/build"
 
 # package blender plugin
-
 $bl_product_name = "vertexforge"
-
-$bl_source_path = "addons/$bl_product_name"
-$bl_target_path = "$build_path/$bl_product_name"
-
-Write-Output "Creating $bl_target_path folder"
-New-Item -ItemType directory -Path $bl_target_path
-
-$abs_bl_target_path = Resolve-Path $bl_target_path
+$bl_source_path = "$base_path/addons/$bl_product_name"
+$bl_target_path = "$build_folder/$bl_product_name"
 
 
-Write-Output "Exporting : $bl_source_path to $abs_bl_target_path"
+
+if (Test-Path -Path $bl_target_path) {
+    Write-Output "Cleaning $bl_target_path folder"
+    Remove-Item "$bl_target_path" -Recurse
+}
+New-Item -ItemType directory -Path $bl_target_path > $null
+
+
+Write-Output "Exporting : $bl_source_path to $bl_target_path"
 Push-Location $bl_source_path
-git checkout-index --prefix="$abs_bl_target_path/" -a
-Remove-Item "$abs_bl_target_path/docs" -Recurse
+git checkout-index --prefix="$bl_target_path/" -a
+Remove-Item "$bl_target_path/docs" -Recurse
 Pop-Location
 
 $zip_path = "${bl_target_path}.zip"
+if (Test-Path -Path $zip_path) {
+    Write-Output "Cleaning $zip_path"
+    Remove-Item "$zip_path"
+}
+
 $compress = @{
   Path = $bl_target_path
-  CompressionLevel = "Fastest"
+  # CompressionLevel = "Optimal"
   DestinationPath = $zip_path
 }
 Write-Output "Creating $zip_path"
