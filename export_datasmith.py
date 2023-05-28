@@ -1079,6 +1079,69 @@ def exp_mixrgb(node, exp_list):
 	return exp_lerp
 
 
+EXP_MIX_FACTOR_SCALAR = 0
+EXP_MIX_FACTOR_VECTOR = 1
+EXP_MIX_A_SCALAR = 2
+EXP_MIX_B_SCALAR = 3
+EXP_MIX_A_VECTOR = 4
+EXP_MIX_B_VECTOR = 5
+EXP_MIX_A_RGBA = 6
+EXP_MIX_B_RGBA = 7
+
+def exp_mix(socket, exp_list):
+	node = socket.node
+	inputs = node.inputs
+	data_type = node.data_type
+
+	if data_type == "FLOAT":
+		in_a = get_expression(inputs[EXP_MIX_A_SCALAR], exp_list)
+		in_b = get_expression(inputs[EXP_MIX_B_SCALAR], exp_list)
+
+	elif data_type == "VECTOR":
+		in_a = get_expression(inputs[EXP_MIX_A_VECTOR], exp_list, force_default=True)
+		in_b = get_expression(inputs[EXP_MIX_B_VECTOR], exp_list, force_default=True)
+
+	elif data_type == "RGBA":
+
+		in_a = get_expression(inputs[EXP_MIX_A_RGBA], exp_list)
+		in_b = get_expression(inputs[EXP_MIX_B_RGBA], exp_list)
+
+		# in RGBA mode, blend mode is applied and then mixed
+		in_b = exp_blend(in_a, in_b, node.blend_type, exp_list)
+
+	else:
+		assert(False)
+		print("ERROR! unknown data type")
+
+	factor_slot = EXP_MIX_FACTOR_SCALAR
+	if data_type == "VECTOR" and node.factor_mode == "NON_UNIFORM":
+		factor_slot = EXP_MIX_FACTOR_VECTOR
+	in_factor = get_expression(inputs[factor_slot], exp_list)
+
+	if node.clamp_factor:
+		# possible optimization:
+		# if in_factor is constant, do static check?
+		clamp = Node("Saturate")
+		push_exp_input(clamp, "0", in_factor)
+		in_factor = exp_list.push(clamp)
+
+
+	lerp = Node("LinearInterpolate")
+	push_exp_input(lerp, "0", in_a)
+	push_exp_input(lerp, "1", in_b)
+	push_exp_input(lerp, "2", in_factor)
+	lerp_exp = exp_list.push(lerp)
+
+	if data_type == "RGBA":
+		if node.clamp_result:
+			clamp = Node("Saturate")
+			push_exp_input(clamp, "0", lerp_exp)
+			lerp_exp = exp_list.push(clamp)
+
+	return lerp_exp
+
+
+
 op_custom_functions = {
 	"BRIGHTCONTRAST":     "/DatasmithBlenderContent/MaterialFunctions/BrightContrast",
 	"COLOR_RAMP":         "/DatasmithBlenderContent/MaterialFunctions/ColorRamp",
@@ -1143,6 +1206,27 @@ def exp_input(input_idx, expression, output_idx = 0):
 	#	report_error("trying to use expression=None for input for another expression")
 
 	return '\n\t\t\t\t<Input Name="%s" expression="%s" OutputIndex="%s"/>' % (input_idx, expression_idx, output_idx)
+
+def exp_output(output_id, expression):
+	expression_idx = -1
+	output_idx = 0
+	if type(expression) is dict:
+		if "expression" not in expression:
+			log.error(expression)
+		expression_idx = expression["expression"]
+		output_idx = expression.get("OutputIndex", 0)
+	elif type(expression) is tuple:
+		expression_idx, output_idx = expression
+	elif expression != None:
+		assert type(expression) == int
+		expression_idx = expression
+
+	if output_idx == 0:
+		return '\n\t\t<%s expression="%s"/>' % (output_id, expression_idx)
+
+	else:
+		return '\n\t\t<%s expression="%s" OutputIndex="%s"/>' % (output_id, expression_idx, output_idx)
+
 
 def exp_invert(node, exp_list):
 	n = Node("OneMinus")
@@ -2225,6 +2309,8 @@ def get_expression_inner(socket, exp_list, target_socket):
 	if node.type == 'SHADERTORGB':
 		return exp_shader_to_rgb(socket, exp_list)
 	# Others:
+	if node.type == 'MIX':
+		return exp_mix(socket, exp_list)
 
 	# if node.type == 'SCRIPT':
 
@@ -2329,7 +2415,7 @@ def pbr_nodetree_material(material):
 
 	# here we add those BaseColor, Roughness, etc... values to the UEPbrMaterial node
 	for key, value in expressions.items():
-		n.push(Node(key, value))
+		n.push(exp_output(key, value))
 
 	can_be_twosided = True
 
