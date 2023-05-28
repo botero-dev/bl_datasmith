@@ -450,7 +450,7 @@ def exp_tex_noise(socket, exp_list):
 
 	if dimensions!='1d':
 		vector_exp = get_expression_mapped(inputs['Vector'], exp_list, exp_texcoord_generated, force_exp=True)
-		push_exp_input(n, "0", vector_exp)
+		push_exp_input(n, input_idx, vector_exp)
 		input_idx += 1
 	if dimensions == '1d' or dimensions == '4d':
 		push_input("W")
@@ -463,6 +463,33 @@ def exp_tex_noise(socket, exp_list):
 
 	exp_idx = exp_list.push(n)
 	cached_node = (exp_idx, NODE_TEX_NOISE_OUTPUTS)
+	cached_nodes[node] = cached_node
+	return exp_from_cache(cached_node, socket.name)
+
+
+NODE_TEX_WHITE_NOISE_OUTPUTS = ("Value", "Color")
+def exp_tex_white_noise(socket, exp_list):
+
+	node = socket.node
+	dimensions = tex_dimensions_map[node.noise_dimensions]
+
+	function_path = "/DatasmithBlenderContent/MaterialFunctions/TexWhiteNoise_%s" % dimensions
+	n = Node("FunctionCall", { "Function": function_path})
+
+	input_idx = 0
+	inputs = node.inputs
+
+	if dimensions!='1d':
+		exp = get_expression(inputs['Vector'], exp_list, skip_default_warn=True)
+		push_exp_input(n, input_idx, exp)
+		input_idx += 1
+	if dimensions == '1d' or dimensions == '4d':
+		exp = get_expression(inputs['W'], exp_list, skip_default_warn=True)
+		push_exp_input(n, input_idx, exp)
+
+
+	exp_idx = exp_list.push(n)
+	cached_node = (exp_idx, NODE_TEX_WHITE_NOISE_OUTPUTS)
 	cached_nodes[node] = cached_node
 	return exp_from_cache(cached_node, socket.name)
 
@@ -2219,6 +2246,8 @@ def get_expression_inner(socket, exp_list, target_socket):
 		return exp_tex_voronoi(socket, exp_list)
 	if node.type == 'TEX_WAVE':
 		return exp_tex_wave(socket, exp_list)
+	if node.type == "TEX_WHITE_NOISE":
+		return exp_tex_white_noise(socket, exp_list)
 
 	# Add > Color
 	if node.type == 'BRIGHTCONTRAST':
