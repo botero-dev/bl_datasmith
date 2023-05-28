@@ -1678,14 +1678,10 @@ def exp_group(socket, exp_list):
 
 	# capture group inputs to serve them to the group nodes
 	new_context = {}
-	# TODO: handle case where there are many inputs with same name.
-	for input in node.inputs:
-		input_spec = node_tree.inputs[input.name]
-		
-		value_hidden = input_spec.hide_value
+	for idx, input in enumerate(node.inputs): # use input.identifier
 		value_has_links = len(input.links) > 0
 		value_exp = get_expression(input, exp_list, force_default=True)
-		new_context[input.name] = (value_exp, value_hidden, value_has_links)
+		new_context[input.identifier] = (value_exp, value_has_links)
 
 	group_context = new_context
 	reverse_expressions = {}
@@ -1701,11 +1697,12 @@ def exp_group(socket, exp_list):
 	if not output_node:
 		report_error("group does not have output node!")
 
-	# now traverse the inner graph 
-	# TODO: test what happens if there are multiple outputs with same name?
-	# maybe find by index better?
-	output_name = socket.name
-	inner_socket = output_node.inputs[output_name]
+	# now traverse the inner graph
+	inner_socket = None
+	for input in output_node.inputs:
+		if input.identifier == socket.identifier:
+			inner_socket = input
+	assert(inner_socket)
 	inner_exp = get_expression(inner_socket, exp_list)
 
 	group_context = previous_context
@@ -1713,8 +1710,9 @@ def exp_group(socket, exp_list):
 	reverse_expressions = previous_reverse
 	return inner_exp
 
+
 def exp_group_input(socket, exp_list, target_socket):
-	outer_expression_data = group_context[socket.name]
+	outer_expression_data = group_context[socket.identifier]
 	# if the node inside the group is something like a TEX_IMAGE, and it is
 	# connected to a group input that is disconnected in the outside, don't
 	# use the group default values, matching what Blender does in this case.
