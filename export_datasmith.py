@@ -1062,9 +1062,6 @@ def exp_blend(exp_0, exp_1, blend_type, exp_list):
 def exp_mixrgb(node, exp_list):
 	exp_1 = get_expression(node.inputs['Color1'], exp_list)
 	exp_2 = get_expression(node.inputs['Color2'], exp_list)
-	# TODO: optimize case fac is disconnected and equals one (or zero)
-	# TODO: add logic for clamp
-
 	exp_result = exp_blend(exp_1, exp_2, node.blend_type, exp_list)
 
 	lerp = Node("LinearInterpolate")
@@ -1072,8 +1069,14 @@ def exp_mixrgb(node, exp_list):
 	lerp.push(exp_input("1", exp_result))
 	exp_fac = get_expression(node.inputs['Fac'], exp_list)
 	lerp.push(exp_input("2", exp_fac))
+	exp_lerp = exp_list.push(lerp)
 
-	return exp_list.push(lerp)
+	if node.use_clamp:
+		clamp = Node("Saturate")
+		push_exp_input(clamp, "0", exp_lerp)
+		exp_lerp = exp_list.push(clamp)
+
+	return exp_lerp
 
 
 op_custom_functions = {
