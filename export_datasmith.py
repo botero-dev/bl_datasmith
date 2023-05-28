@@ -1,18 +1,20 @@
 # Datasmith exporter for Blender
 # Copyright 2018-2022 Andrés Botero
 
-import bpy
-import idprop
-import bmesh
 import math
 import os
 import time
 import hashlib
 import shutil
 from os import path
-from .data_types import UDMesh, Node, sanitize_name
-from mathutils import Matrix, Vector, Euler
 import numpy as np
+
+import bpy
+import idprop
+import bmesh
+from mathutils import Matrix, Vector, Euler
+
+from .data_types import UDMesh, Node, sanitize_name
 
 import logging
 log = logging.getLogger("bl_datasmith")
@@ -755,7 +757,7 @@ MATH_CUSTOM_FUNCTIONS = {
 	'SMOOTH_MAX':   (3, "/DatasmithBlenderContent/MaterialFunctions/MathSmoothMax"),
 	'WRAP':         (3, "/DatasmithBlenderContent/MaterialFunctions/MathWrap"),
 	'SNAP':         (2, "/DatasmithBlenderContent/MaterialFunctions/MathSnap"),
-	'PINGPONG':    (2, "/DatasmithBlenderContent/MaterialFunctions/MathPingPong"),
+	'PINGPONG':     (2, "/DatasmithBlenderContent/MaterialFunctions/MathPingPong"),
 }
 
 # these map 1:1 with UE4 nodes:
@@ -1993,6 +1995,9 @@ def get_expression_inner(socket, exp_list, target_socket):
 
 
 		all_keys = {*expressions.keys(), *expressions1.keys()}
+		all_keys = list(all_keys)
+		all_keys.sort() # we do this to have deterministic outputs
+
 		for name in all_keys:
 
 
