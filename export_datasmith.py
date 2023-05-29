@@ -3369,6 +3369,7 @@ def get_mesh_name(bl_obj_inst):
 	if not has_geometry:
 		# we use null name as a way to mean no geometry
 		meshes_per_original[bl_mesh_name] = None
+		bl_obj_inst.to_mesh_clear()
 		return None
 
 	log.info("creating mesh:%s" % bl_mesh_name)
@@ -3392,6 +3393,7 @@ def get_mesh_name(bl_obj_inst):
 		else:
 			for slot in bl_obj.material_slots:
 				material_list.append((slot.material, bl_obj))
+	bl_obj_inst.to_mesh_clear()
 
 	if umesh:
 		mesh_data['umesh'] = umesh
@@ -3627,9 +3629,7 @@ def get_object_data(objects, _object, top_level_objs, object_name=None, instance
 		if not unique:
 			objects[object_name] = object_data
 
-		parent = _object.parent
-		if instance_parent:
-			parent = instance_parent
+		parent = instance_parent or _object.parent
 
 		if parent:
 			parent_data = get_object_data(objects, parent, top_level_objs)
