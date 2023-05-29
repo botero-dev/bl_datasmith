@@ -14,7 +14,7 @@ import idprop
 import bmesh
 from mathutils import Matrix, Vector, Euler
 
-from .data_types import UDMesh, Node, sanitize_name
+from .data_types import UDMesh, Node, sanitize_name, calc_hash
 
 import logging
 log = logging.getLogger("bl_datasmith")
@@ -3315,14 +3315,6 @@ def save_texture(texture, basedir, folder_name, skip_textures = False, use_gamma
 		img_hash = calc_hash(image_path)
 		n.push(Node('Hash', {'value': img_hash}))
 	return n
-
-
-def calc_hash(image_path):
-	hash_md5 = hashlib.md5()
-	with open(image_path, "rb") as f:
-		for chunk in iter(lambda: f.read(4096), b""):
-			hash_md5.update(chunk)
-	return hash_md5.hexdigest()
 
 
 # send instance.original to this function

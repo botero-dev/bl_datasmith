@@ -8,7 +8,8 @@ import itertools
 import bpy
 import numpy as np
 import logging
-from hashlib import md5
+import hashlib
+
 log = logging.getLogger("bl_datasmith")
 
 def read_array_data(io, data_struct):
@@ -33,19 +34,14 @@ def flatten(it):
 def write_array_data(io, data_struct, data):
 	# first get data length
 	length = len(data)
-	data_struct = '<I' + (data_struct) * length
-	flat_data = None
-	output = b''
 	if isinstance(data, np.ndarray):
-
-		output += struct.pack('<I', length)
-		output += data.tobytes()
+		io.write(struct.pack('<I', length))
+		data.tofile(io)
 	else:
 		flat_data = flatten(data)
+		data_struct = '<I' + (data_struct) * length
 		output = struct.pack(data_struct, length, *flat_data)
-	if io:
 		io.write(output)
-	return output
 
 def write_data(io, data_struct, *args):
 	data_struct = '<' + data_struct
@@ -274,10 +270,13 @@ class UDMesh():
 		self.hash = calc_hash(abs_path)
 
 
+sha1 = hashlib.sha1
 def calc_hash(image_path):
-	hash_md5 = md5()
+	result = sha1()
 	with open(image_path, "rb") as f:
-		for chunk in iter(lambda: f.read(4096), b""):
-			hash_md5.update(chunk)
-	return hash_md5.hexdigest()
+		buf = f.read(524288) # read 512KB
+		while len(buf) > 0:
+			result.update(buf)
+			buf = f.read(524288)
+	return result.hexdigest()
 
