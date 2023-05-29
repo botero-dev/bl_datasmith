@@ -1050,60 +1050,55 @@ def exp_gamma(node, exp_list):
 	n.push(exp_input("1", exp_1))
 	return {"expression": exp_list.push(n)}
 
-op_map_color = {
-# MIX is handled manually
-	'DARKEN': "/Engine/Functions/Engine_MaterialFunctions03/Blends/Blend_Darken",
-# MULTIPLY is handled in MATH_TWO_INPUTS
-	'BURN': "/Engine/Functions/Engine_MaterialFunctions03/Blends/Blend_ColorBurn",
-	# TODO: check for blender implementation of burn, it could mean this:
-	#'BURN': "/Engine/Functions/Engine_MaterialFunctions03/Blends/Blend_LinearBurn",
-	'LIGHTEN': "/Engine/Functions/Engine_MaterialFunctions03/Blends/Blend_Lighten",
-	'SCREEN': "/Engine/Functions/Engine_MaterialFunctions03/Blends/Blend_Screen",
-	'DODGE': "/Engine/Functions/Engine_MaterialFunctions03/Blends/Blend_ColorDodge",
-	'OVERLAY': "/Engine/Functions/Engine_MaterialFunctions03/Blends/Blend_Overlay",
-# ADD is handled in MATH_TWO_INPUTS
-	'SOFT_LIGHT': "/Engine/Functions/Engine_MaterialFunctions03/Blends/Blend_SoftLight",
-	'LINEAR_LIGHT': "/Engine/Functions/Engine_MaterialFunctions03/Blends/Blend_LinearLight",
-	'DIFFERENCE': "/Engine/Functions/Engine_MaterialFunctions03/Blends/Blend_Difference",
-# SUBTRACT is handled in MATH_TWO_INPUTS
-# DIVIDE is handled in MATH_TWO_INPUTS
-	'HUE': "/DatasmithBlenderContent/MaterialFunctions/Blend_Hue",
-	'SATURATION': "/DatasmithBlenderContent/MaterialFunctions/Blend_Saturation",
-	'COLOR': "/DatasmithBlenderContent/MaterialFunctions/Blend_Color",
-	'VALUE': "/DatasmithBlenderContent/MaterialFunctions/Blend_Value",
+
+op_map_blend = {
+	'MIX':          "/DatasmithBlenderContent/MaterialFunctions/Blend_Mix",
+	'DARKEN':       "/DatasmithBlenderContent/MaterialFunctions/Blend_Darken",
+	'MULTIPLY':     "/DatasmithBlenderContent/MaterialFunctions/Blend_Multiply",
+	'BURN':         "/DatasmithBlenderContent/MaterialFunctions/Blend_ColorBurn",
+	'LIGHTEN':      "/DatasmithBlenderContent/MaterialFunctions/Blend_Lighten",
+	'SCREEN':       "/DatasmithBlenderContent/MaterialFunctions/Blend_Screen",
+	'DODGE':        "/DatasmithBlenderContent/MaterialFunctions/Blend_Dodge",
+	'ADD':          "/DatasmithBlenderContent/MaterialFunctions/Blend_Overlay",
+	'OVERLAY':      "/DatasmithBlenderContent/MaterialFunctions/Blend_Overlay",
+	'SOFT_LIGHT':   "/DatasmithBlenderContent/MaterialFunctions/Blend_SoftLight",
+	'LINEAR_LIGHT': "/DatasmithBlenderContent/MaterialFunctions/Blend_LinearLight",
+	'DIFFERENCE':   "/DatasmithBlenderContent/MaterialFunctions/Blend_Difference",
+	'EXCLUSION':    "/DatasmithBlenderContent/MaterialFunctions/Blend_Exclusion",
+	'SUBTRACT':     "/DatasmithBlenderContent/MaterialFunctions/Blend_Subtract",
+	'DIVIDE':       "/DatasmithBlenderContent/MaterialFunctions/Blend_Divide",
+	'HUE':          "/DatasmithBlenderContent/MaterialFunctions/Blend_Hue",
+	'SATURATION':   "/DatasmithBlenderContent/MaterialFunctions/Blend_Saturation",
+	'COLOR':        "/DatasmithBlenderContent/MaterialFunctions/Blend_Color",
+	'VALUE':        "/DatasmithBlenderContent/MaterialFunctions/Blend_Value",
 }
 
-def exp_blend(exp_0, exp_1, blend_type, exp_list):
-	if blend_type == 'MIX':
-		return exp_1
-	n = None
-	if blend_type in {'ADD', 'SUBTRACT', 'MULTIPLY', 'DIVIDE'}:
-		n = Node(MATH_TWO_INPUTS[blend_type])
-	else:
-		n = Node("FunctionCall", { "Function": op_map_color[blend_type]})
-	assert n
-	n.push(exp_input("0", exp_0))
-	n.push(exp_input("1", exp_1))
-	return {"expression": exp_list.push(n)}
+
 
 def exp_mixrgb(node, exp_list):
-	exp_1 = get_expression(node.inputs['Color1'], exp_list)
-	exp_2 = get_expression(node.inputs['Color2'], exp_list)
-	exp_result = exp_blend(exp_1, exp_2, node.blend_type, exp_list)
+	inputs = node.inputs
+	exp_t = get_expression(inputs['Fac'], exp_list)
+	# blender did always clamp factor input for color blends
+	# doesn't do it forcefully in new mix node because it is optional
+	t_clamped = Node("Saturate")
+	push_exp_input(t_clamped, 0, exp_t)
+	exp_t2 = exp_list.push(t_clamped)
 
-	lerp = Node("LinearInterpolate")
-	lerp.push(exp_input("0", exp_1))
-	lerp.push(exp_input("1", exp_result))
-	exp_fac = get_expression(node.inputs['Fac'], exp_list)
-	lerp.push(exp_input("2", exp_fac))
-	exp_lerp = exp_list.push(lerp)
+	exp_a = get_expression(inputs['Color1'], exp_list)
+	exp_b = get_expression(inputs['Color2'], exp_list)
+
+	blend = Node("FunctionCall", { "Function": op_map_blend[node.blend_type] })
+	push_exp_input(blend, 0, exp_t2)
+	push_exp_input(blend, 1, exp_a)
+	push_exp_input(blend, 2, exp_b)
+	exp_blend = exp_list.push(blend)
 
 	if node.use_clamp:
 		clamp = Node("Saturate")
-		push_exp_input(clamp, "0", exp_lerp)
-		exp_lerp = exp_list.push(clamp)
+		push_exp_input(clamp, "0", exp_blend)
+		exp_blend = exp_list.push(clamp)
 
-	return exp_lerp
+	return exp_blend
 
 
 EXP_MIX_FACTOR_SCALAR = 0
@@ -1120,26 +1115,6 @@ def exp_mix(socket, exp_list):
 	inputs = node.inputs
 	data_type = node.data_type
 
-	if data_type == "FLOAT":
-		in_a = get_expression(inputs[EXP_MIX_A_SCALAR], exp_list)
-		in_b = get_expression(inputs[EXP_MIX_B_SCALAR], exp_list)
-
-	elif data_type == "VECTOR":
-		in_a = get_expression(inputs[EXP_MIX_A_VECTOR], exp_list, force_default=True)
-		in_b = get_expression(inputs[EXP_MIX_B_VECTOR], exp_list, force_default=True)
-
-	elif data_type == "RGBA":
-
-		in_a = get_expression(inputs[EXP_MIX_A_RGBA], exp_list)
-		in_b = get_expression(inputs[EXP_MIX_B_RGBA], exp_list)
-
-		# in RGBA mode, blend mode is applied and then mixed
-		in_b = exp_blend(in_a, in_b, node.blend_type, exp_list)
-
-	else:
-		assert(False)
-		print("ERROR! unknown data type")
-
 	factor_slot = EXP_MIX_FACTOR_SCALAR
 	if data_type == "VECTOR" and node.factor_mode == "NON_UNIFORM":
 		factor_slot = EXP_MIX_FACTOR_VECTOR
@@ -1153,19 +1128,44 @@ def exp_mix(socket, exp_list):
 		in_factor = exp_list.push(clamp)
 
 
-	lerp = Node("LinearInterpolate")
-	push_exp_input(lerp, "0", in_a)
-	push_exp_input(lerp, "1", in_b)
-	push_exp_input(lerp, "2", in_factor)
-	lerp_exp = exp_list.push(lerp)
+	if data_type == "FLOAT":
+		in_a = get_expression(inputs[EXP_MIX_A_SCALAR], exp_list)
+		in_b = get_expression(inputs[EXP_MIX_B_SCALAR], exp_list)
+
+	elif data_type == "VECTOR":
+		in_a = get_expression(inputs[EXP_MIX_A_VECTOR], exp_list, force_default=True)
+		in_b = get_expression(inputs[EXP_MIX_B_VECTOR], exp_list, force_default=True)
+
+	elif data_type == "RGBA":
+		# RGBA blend modes have their own nodes
+		in_a = get_expression(inputs[EXP_MIX_A_RGBA], exp_list)
+		in_b = get_expression(inputs[EXP_MIX_B_RGBA], exp_list)
+
+	else:
+		assert(False)
+		print("ERROR! unknown data type")
+
+	if data_type == "FLOAT" or data_type == "VECTOR":
+		result = Node("LinearInterpolate")
+		push_exp_input(result, 0, in_a)
+		push_exp_input(result, 1, in_b)
+		push_exp_input(result, 2, in_factor)
+	else:
+		assert(data_type == "RGBA")
+		result = Node("FunctionCall", { "Function": op_map_blend[node.blend_type] })
+		push_exp_input(result, 0, in_factor)
+		push_exp_input(result, 1, in_a)
+		push_exp_input(result, 2, in_b)
+	
+	result_exp = exp_list.push(result)
 
 	if data_type == "RGBA":
 		if node.clamp_result:
 			clamp = Node("Saturate")
-			push_exp_input(clamp, "0", lerp_exp)
-			lerp_exp = exp_list.push(clamp)
+			push_exp_input(clamp, "0", result_exp)
+			result_exp = exp_list.push(clamp)
 
-	return lerp_exp
+	return result_exp
 
 
 
@@ -2856,7 +2856,7 @@ def collect_object_custom_data(bl_obj, n, apply_modifiers, obj_mat, depsgraph, e
 
 				for idx, slot in enumerate(bl_obj.material_slots):
 					if slot.link == 'OBJECT':
-						#collect_materials([slot.material], uscene)
+						material_list.append((slot.material, bl_obj))
 						safe_name = sanitize_name(slot.material.name)
 						n.push(Node('material', {'id':idx, 'name':safe_name}))
 
@@ -2889,7 +2889,6 @@ def collect_object_custom_data(bl_obj, n, apply_modifiers, obj_mat, depsgraph, e
 					for idx, slot in enumerate(bl_obj.material_slots):
 						material_list.append((slot.material, bl_obj))
 						if slot.link == 'OBJECT':
-							#collect_materials([slot.material], uscene)
 							safe_name = sanitize_name(slot.material.name)
 							n.push(Node('material', {'id':idx, 'name':safe_name}))
 
@@ -2924,7 +2923,6 @@ def collect_object_custom_data(bl_obj, n, apply_modifiers, obj_mat, depsgraph, e
 					for idx, slot in enumerate(bl_obj.material_slots):
 						material_list.append((slot.material, bl_obj))
 						if slot.link == 'OBJECT':
-							#collect_materials([slot.material], uscene)
 							safe_name = sanitize_name(slot.material.name)
 							n.push(Node('material', {'id':idx, 'name':safe_name}))
 
@@ -3418,8 +3416,9 @@ def fill_obj_mesh(obj_dict, bl_obj):
 
 		for idx, slot in enumerate(bl_obj.material_slots):
 			if slot.link == 'OBJECT':
-				#collect_materials([slot.material], uscene)
 				safe_name = sanitize_name(slot.material.name)
+				material_list = datasmith_context["materials"]
+				material_list.append((slot.material, bl_obj))
 				fields.append('\t<material id="%i" name="%s"/>\n' % (idx, safe_name))
 
 
@@ -3712,6 +3711,8 @@ def collect_depsgraph(output, use_instanced_meshes):
 						bl_obj = instance.instance_object
 						for idx, slot in enumerate(bl_obj.material_slots):
 							if slot.link == 'OBJECT':
+								material_list = datasmith_context["materials"]
+								material_list.append((slot.material, bl_obj))
 								safe_name = sanitize_name(slot.material.name)
 								instance_material_slots.append('\t\t\t<material id="%i" name="%s"/>\n' % (idx, safe_name))
 
@@ -4192,7 +4193,7 @@ def collect_and_save(context, args, save_path):
 	for material in materials:
 		found = False
 		for mat in unique_materials:
-			if material[0] is mat[0]:
+			if material[0] is mat[0]: # materials here are tuple (material, owner)
 				found = True
 				break
 		if not found:
