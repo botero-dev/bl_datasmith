@@ -37,5 +37,5 @@ if (!(Test-Path $executable_path)) {
 
 }
 
-echo $executable_path
+echo $(Resolve-Path $executable_path)
 

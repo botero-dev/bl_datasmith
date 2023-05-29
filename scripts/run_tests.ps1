@@ -7,8 +7,10 @@ param (
     [switch] $diff = $false,
     [switch] $animations = $false,
     [switch] $fast = $false,
+    [switch] $test = $false,
     [switch] $b3 = $false,
-    [string] $force_version
+    [string] $force_version,
+    [switch] $single_thread = $false
 )
 
 if ($PSVersionTable.PSEdition -ne "Core") {
@@ -18,7 +20,7 @@ if ($PSVersionTable.PSEdition -ne "Core") {
 
 
 $scripts_folder = $PSScriptRoot
-$root_folder = "$scripts_folder/.."
+$root_folder = Resolve-Path "$scripts_folder/.."
 $demos_folder = "$root_folder/demos"
 
 
@@ -26,9 +28,9 @@ $demos_folder = "$root_folder/demos"
 $test_csv_rows = Import-Csv "$demos_folder/test_files.csv"
 
 $versions = @{
-    "2_9" =    @{ version=2.93; patch=16 };
-    "3_3" =    @{ version=3.3;  patch=5  };
-    "latest" = @{ version=3.5;  patch=0  };
+    "2_9" =    @{ version=2.93; patch=18 };
+    "3_3" =    @{ version=3.3;  patch=7  };
+    "latest" = @{ version=3.5;  patch=1  };
 }
 
 # TODO: make two phase export
@@ -39,6 +41,13 @@ $report_path = "$root_folder/export/demos/report.csv"
 echo "dir,name,status,time_seconds" > $report_path
 
 foreach ($test_row in $test_csv_rows) {
+
+    # skip any scene not in test group if we are using the "test" 
+    if ($test) {
+        if (-not [boolean]$test_row.test) {
+            continue
+        }
+    }
 
     # skip slow scenes if we are using the "fast" flag
     if ($fast) {
@@ -65,6 +74,8 @@ foreach ($test_row in $test_csv_rows) {
 
     $base_file_dir = Split-Path $base_file_path -Parent
     $target_file_dir = "$root_folder/export/demos/$base_file_dir"
+    Write-Host "Writing to $target_file_dir"
+
     $null = New-Item -Path $target_file_dir -ItemType directory -ErrorAction SilentlyContinue
 
     $base_file_name = [System.IO.Path]::GetFileNameWithoutExtension($base_file_path)
@@ -89,10 +100,18 @@ foreach ($test_row in $test_csv_rows) {
         #"--debug-all", 
         "--addons", "vertexforge",
         "--python-exit-code", "17",
-        "--python", "$scripts_folder/bl_export_datasmith.py",
-        "--",
-        "--output", $target_file_path
+        "--python", "$scripts_folder/bl_export_datasmith.py"
     )
+
+    if ($single_thread) {
+        $command += "--debug-depsgraph-no-threads"
+        $command += "--threads"
+        $command += "1"
+    }
+
+    $command += "--"
+    $command += "--output"
+    $command += $target_file_path
     if ($diff) {       $command += "--diff"    }
     if ($old) {        $command += "--old"    }
     if ($animations) { $command += "--animations"    }
