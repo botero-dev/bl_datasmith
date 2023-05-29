@@ -1745,7 +1745,7 @@ def exp_group_input(socket, exp_list, target_socket):
 	# use the group default values, matching what Blender does in this case.
 	if type(target_socket) == bpy.types.NodeSocketVector:
 		if type(target_socket.default_value) == bpy.types.bpy_prop_array:
-			value_has_links = outer_expression_data[2]
+			value_has_links = outer_expression_data[1]
 			if not value_has_links:
 				return None
 	outer_expression = outer_expression_data[0]
