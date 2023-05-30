@@ -1059,7 +1059,7 @@ op_map_blend = {
 	'LIGHTEN':      "/DatasmithBlenderContent/MaterialFunctions/Blend_Lighten",
 	'SCREEN':       "/DatasmithBlenderContent/MaterialFunctions/Blend_Screen",
 	'DODGE':        "/DatasmithBlenderContent/MaterialFunctions/Blend_Dodge",
-	'ADD':          "/DatasmithBlenderContent/MaterialFunctions/Blend_Overlay",
+	'ADD':          "/DatasmithBlenderContent/MaterialFunctions/Blend_Add",
 	'OVERLAY':      "/DatasmithBlenderContent/MaterialFunctions/Blend_Overlay",
 	'SOFT_LIGHT':   "/DatasmithBlenderContent/MaterialFunctions/Blend_SoftLight",
 	'LINEAR_LIGHT': "/DatasmithBlenderContent/MaterialFunctions/Blend_LinearLight",
