@@ -26,6 +26,7 @@ Push-Location $ue_plugin_path
 git checkout-index --prefix="$export_path/" -a
 # Remove-Item "$export_path/docs" -Recurse
 Pop-Location
+#todo: clean .gitignore file from export path
 
 
 Write-Output "Copying : $build_path/vertexforge.zip to $export_path"

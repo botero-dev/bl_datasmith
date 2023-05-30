@@ -2,16 +2,24 @@
 
 $base_path = Resolve-Path "$PSScriptRoot/.."
 
-& $base_path/scripts/setup_bl.ps1
 
 # assumed to exist because of .keep file
 $build_folder = "$base_path/build"
 
 # package blender plugin
 $bl_product_name = "vertexforge"
-$bl_source_path = "$base_path/addons/$bl_product_name"
-$bl_target_path = "$build_folder/$bl_product_name"
+$bl_source_path = "$build_folder/$bl_product_name"
+$bl_target_path = "$build_folder/${bl_product_name}_stripped"
 
+
+
+if (Test-Path -Path $bl_source_path) {
+    Write-Output "Cleaning $bl_source_path folder"
+    Remove-Item "$bl_source_path" -Recurse
+}
+# assumed to exist because of .keep file
+$plugin_remote_path = "git@github.com:0xafbf/blenderforge.git"
+git clone $plugin_remote_path "$bl_source_path"
 
 
 if (Test-Path -Path $bl_target_path) {
@@ -25,9 +33,10 @@ Write-Output "Exporting : $bl_source_path to $bl_target_path"
 Push-Location $bl_source_path
 git checkout-index --prefix="$bl_target_path/" -a
 Remove-Item "$bl_target_path/docs" -Recurse
+Remove-Item "$bl_target_path/.gitignore" -Recurse
 Pop-Location
 
-$zip_path = "${bl_target_path}.zip"
+$zip_path = "${bl_source_path}-blender.zip"
 if (Test-Path -Path $zip_path) {
     Write-Output "Cleaning $zip_path"
     Remove-Item "$zip_path"
