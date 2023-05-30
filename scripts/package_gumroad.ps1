@@ -57,8 +57,8 @@ foreach($engine_version in $engine_versions) {
     }
 
 
-    Write-Output "Copying : $build_path/vertexforge.zip to $export_path"
-    Copy-Item -Path "$build_path/vertexforge.zip" -Destination "$export_path/" -Recurse
+    Write-Output "Copying : $build_path/vertexforge-blender.zip to $export_path"
+    Copy-Item -Path "$build_path/vertexforge-blender.zip" -Destination "$export_path/" -Recurse
 
 
     # for package_gumroad:
@@ -69,7 +69,7 @@ foreach($engine_version in $engine_versions) {
     # Write-Host "Copying README"
     # Copy-Item -Path "README.txt" -Destination "$build_path/"
 
-    $build_filename = "${export_path}.zip"
+    $build_filename = "$release_path/vertexforge-${engine_version}.zip"
 
     $final_build_compress = @{
       Path = "${export_path}/*"
@@ -81,4 +81,4 @@ foreach($engine_version in $engine_versions) {
     Compress-Archive @final_build_compress
 }
 
-Copy-Item -Path "$build_path/vertexforge.zip" -Destination "$release_path/" -Recurse
+Copy-Item -Path "$build_path/vertexforge-blender.zip" -Destination "$release_path/" -Recurse

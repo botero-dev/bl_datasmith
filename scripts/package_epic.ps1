@@ -29,8 +29,8 @@ Pop-Location
 #todo: clean .gitignore file from export path
 
 
-Write-Output "Copying : $build_path/vertexforge.zip to $export_path"
-Copy-Item -Path "$build_path/vertexforge.zip" -Destination "$export_path/" -Recurse
+Write-Output "Copying : $build_path/vertexforge-blender.zip to $export_path"
+Copy-Item -Path "$build_path/vertexforge-blender.zip" -Destination "$export_path/" -Recurse
 
 
 # for package_gumroad:

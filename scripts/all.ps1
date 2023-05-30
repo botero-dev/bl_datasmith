@@ -1,10 +1,11 @@
 # all.ps1
+# Copyright 2023 Andrés Botero 
 
-# TODO: write the script
-# what should it do?
-# - run build_all_win.ps1
-# - run remote_build_mac.ps1
-# - run export_bl.ps1
-# - run package_epic.ps1
-# - run package_gumroad.ps1
+$base_path = Resolve-Path "$PSScriptRoot/.."
+
+& "$base_path/scripts/export_bl.ps1"
+# & "$base_path/scripts/build_all_win.ps1"
+# & "$base_path/scripts/remote_build_mac.ps1.ps1"
+& "$base_path/scripts/package_epic.ps1"
+& "$base_path/scripts/package_gumroad.ps1"
 
