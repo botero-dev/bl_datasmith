@@ -3130,7 +3130,8 @@ def f(value):
 	return '%f' % value
 
 def collect_environment(world):
-
+	if not world:
+		return
 	if not world.use_nodes:
 		return
 
@@ -3990,18 +3991,21 @@ def collect_anims(context, new_iterator: bool, use_instanced_meshes: bool):
 				rotations[frame_idx, 1:4] = rot_fix * rot.to_euler('XYZ')
 				scales[frame_idx, 1:4] = scale
 
+			translations[np.isnan(translations)] = 0
 			trans_expression = ",".join(
 				'{"id":%d,"x":%f,"y":%f,"z":%f}'% tuple(v)
 				for v in translations
 			)
 			timeline_repr.extend(('"trans":[', trans_expression, '],'))
 
+			rotations[np.isnan(rotations)] = 0
 			rot_expression = ",".join(
 				'{"id":%d,"x":%f,"y":%f,"z":%f}'% tuple(v)
 				for v in rotations
 			)
 			timeline_repr.extend(('"rot":[', rot_expression, '],'))
 
+			scales[np.isnan(scales)] = 0
 			scale_expression = ",".join(
 				'{"id":%d,"x":%f,"y":%f,"z":%f}'% tuple(v)
 				for v in scales
