@@ -1965,6 +1965,19 @@ def get_expression_inner(socket, exp_list, target_socket):
 		else:
 			bsdf["EmissiveColor"] = get_expression(emission_field, exp_list)
 
+		use_clear_coat = False
+		clear_coat_field = node.inputs["Clearcoat"]
+		if len(clear_coat_field.links) != 0:
+			use_clear_coat = True
+		elif clear_coat_field.default_value != 0:
+			use_clear_coat = True
+		if use_clear_coat:
+			clear_coat_exp = get_expression(clear_coat_field, exp_list)
+			clear_coat_roughness_field = node.inputs["Clearcoat Roughness"]
+			clear_coat_roughness_exp = get_expression(clear_coat_roughness_field, exp_list)
+			bsdf["ClearCoat"] = clear_coat_exp
+			bsdf["ClearCoatRoughness"] = clear_coat_roughness_exp
+
 	if node.type == 'EEVEE_SPECULAR':
 		report_warn("EEVEE_SPECULAR incomplete implementation", once=True)
 		bsdf = {
@@ -2465,6 +2478,13 @@ def pbr_nodetree_material(material):
 
 		if "Opacity" in expressions:
 			can_be_twosided = False
+
+	shading_model = "DefaultLit"
+	if "ClearCoat" in expressions:
+		shading_model = "ClearCoat"
+	# shading_model can be: "DefaultLit", "ThinTranslucent", "Subsurface", "ClearCoat"
+	if shading_model != "DefaultLit":
+		n.push('\n\t\t<ShadingModel value="%s"/>' % shading_model)
 
 	if config_always_twosided:
 		if can_be_twosided:
