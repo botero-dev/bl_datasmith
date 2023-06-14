@@ -679,14 +679,13 @@ def exp_texture(path, name=None): # , tex_coord_exp):
 	#n.push(Node("Coordinates", tex_coord_exp))
 	return n
 
+MAT_FUNC_RGB_TO_BW = "/DatasmithBlenderContent/MaterialFunctions/RGB_To_BW"
 def exp_rgb_to_bw(socket, exp_list):
 	input_exp = get_expression(socket.node.inputs[0], exp_list)
-	n = Node("DotProduct")
-	n.push(exp_input("0", input_exp))
-	exp_1 = exp_vector( (0.2126, 0.7152, 0.0722), exp_list )
-	n.push( exp_input( "1", exp_1 ) )
-	dot_exp = exp_list.push(n)
-	return { "expression": dot_exp }
+	n = Node("FunctionCall", { "Function": MAT_FUNC_RGB_TO_BW })
+	push_exp_input(n, "0", input_exp)
+	n_exp = exp_list.push(n)
+	return { "expression": n_exp }
 
 MAT_FUNC_MAKE_FLOAT3 = "/Engine/Functions/Engine_MaterialFunctions02/Utility/MakeFloat3"
 def exp_make_vec3(socket, exp_list):
@@ -1870,8 +1869,13 @@ def get_expression(field, exp_list, force_default=False, skip_default_warn=False
 	# if a color output is connected to a scalar input, average by using dot product
 	if field.type == 'VALUE':
 		other_output = field.links[0].from_socket
-		if other_output.type == 'RGBA' or other_output.type == 'VECTOR':
-			#TODO: check if we should do some colorimetric aware convertion to grayscale
+		if other_output.type == 'RGBA':
+			n = Node("FunctionCall", { "Function": MAT_FUNC_RGB_TO_BW })
+			push_exp_input(n, "0", return_exp)
+			dot_exp = exp_list.push(n)
+			return_exp = {"expression": dot_exp}
+
+		elif other_output.type == 'VECTOR':
 			n = Node("DotProduct")
 			exp_0 = return_exp
 			n.push(exp_input("0", exp_0))
