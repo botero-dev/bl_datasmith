@@ -1,18 +1,17 @@
 .DS_Store
 *.pyc
 
-/*/DerivedDataCache
-/*/Intermediate
-/*/Saved
-/*/Binaries
-/*/Plugins
-/*/Content
+
+/ue427_template/Saved
+/ue427_template/Intermediate
+
 
 /blender_env
 /build
 /addons
 /demos
-/DatasmithBlenderContent
+/DatasmithBlenderContent/Binaries
+/DatasmithBlenderContent/Intermediate
 /export
 /screenshots
 /startup
