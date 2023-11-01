@@ -41,23 +41,20 @@ if [ -z "$ue_path" ]; then
 fi
 
 
+# TODO: Check and optionally patch the UE 4.27 source code
+# change UE4.27/Engine/Source/Runtime/Core/Public/Apple/ApplePlatformCompilerPreSetup.h:38
+# add:
+#pragma clang diagnostic ignored "-Wbitwise-instead-of-logical"
+#pragma clang diagnostic ignored "-Wunused-but-set-variable"
+
+
 target_path="$target_path/DatasmithBlenderContent"
-
-
-echo "Cloning UE plugin repo"
-# TODO: maybe don't clone the repo and get the path as argument instead
-plugin_remote_path="git@github.com:vertexforge/DatasmithBlenderContent.git"
 plugin_path="$base_path/DatasmithBlenderContent"
-git clone $plugin_remote_path "$plugin_path"
-
 
 echo "Running UAT BuildPlugin"
 
 uat_path="$ue_path/Engine/Build/BatchFiles/RunUAT.command"
 
-"$uat_path" BuildPlugin "-plugin=$plugin_path/DatasmithBlenderContent.uplugin" "-package=$target_path"
+"$uat_path" BuildPlugin "-plugin=$plugin_path/DatasmithBlenderContent.uplugin" "-package=$target_path" -TargetPlatforms=Mac
 
-# stupid thing to do in ue4.27 mac:
-# change UE4.27/Engine/Source/Runtime/Core/Public/Apple/ApplePlatformCompilerPreSetup.h:38
-# add:
-#pragma clang diagnostic ignored "-Wunused-but-set-variable"
+rm -rf "$target_path/Intermediate"
