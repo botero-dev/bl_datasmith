@@ -5,9 +5,7 @@ param(
     [string] $target_path,
     
     #[Parameter(Mandatory)]
-    [string] $ue_path,
-
-    [switch] $is_ue5
+    [string] $ue_path
 )
 
 $base_path = "$PSScriptRoot/.."
@@ -24,20 +22,9 @@ if (!$ue_path) {
     exit 1
 }
 
-
-#mkdir "$target_path/Plugins"
-
-$plugin_remote_path = "git@github.com:vertexforge/DatasmithBlenderContent.git"
-
-git clone $plugin_remote_path "$base_path/DatasmithBlenderContent"
-
-
-
 $uat_path = "$ue_path/Engine/Build/BatchFiles/RunUAT.bat"
 $plugin_path = "$base_path/DatasmithBlenderContent/DatasmithBlenderContent.uplugin"
 
-& $uat_path BuildPlugin "-plugin=$plugin_path" "-package=$target_path"
-
-
+& $uat_path BuildPlugin "-plugin=$plugin_path" "-package=$target_path" -TargetPlatforms=Win64
 
 Pop-Location

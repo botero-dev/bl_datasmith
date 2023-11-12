@@ -12,8 +12,8 @@ foreach ( $app in $ue_launcher_data.InstallationList ) {
 
 $versions = @(
     "UE_4.27"
-    "UE_5.1"
     "UE_5.2"
+    "UE_5.3"
 )
 
 foreach ( $version in $versions ) {
