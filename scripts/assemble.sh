@@ -1,15 +1,37 @@
 #!/usr/bin/env sh
 
+ssh-agent
+ssh-add
+
+mkdir -p "build"
+
 username="abotero"
 host_win="pag-pc-mini.local"
+host_mac="andress-mac-mini.local"
 
-prefix="${username}@${host_win}"
+prefix_mac="${username}@${host_mac}"
 
-echo "Pushing boostrap code"
-scp scripts/windows-remote-build.ps1 "${prefix}:bootstrap_vertexforge_windows.ps1"
+echo "Pushing MacOS boostrap code"
+script_filename="bootstrap_mac.sh"
+scp "scripts/remote_build_mac.sh" "${prefix_mac}:${script_filename}"
 
-echo "Executing code"
-ssh "$prefix" powershell bootstrap_vertexforge_windows.ps1
+echo "Executing MacOS code"
+#ssh "$prefix_mac" sh "$script_filename"
 
-echo "Pulling artifact"
-scp "${prefix}:/tmp/vertexforge_build/build/win.zip build/win.zip"
+echo "Pulling MacOS artifact"
+scp "${prefix_mac}:tmp/vertexforge_build/build/mac.zip" "build/mac.zip"
+
+
+prefix_win="${username}@${host_win}"
+
+echo "Pushing Windows boostrap code"
+script_filename="bootstrap_win.ps1"
+scp "scripts/remote_build_windows.ps1" "${prefix_win}:${script_filename}"
+
+echo "Executing Windows code"
+#ssh "$prefix_win" powershell "./${script_filename}"
+
+echo "Pulling Windows artifact"
+scp -X buffer=204800 "${prefix_win}:/tmp/vertexforge_build/build/win.zip" "build/win.zip"
+
+# the buffer=204800 is to work around a bug in OpenSSH
