@@ -8,7 +8,7 @@ Push-Location $build_path
 
 & scripts/build_all_win.ps1
 
-Compress-Archive -Path "build/win" -DestinationPath "build/win.zip"
+Compress-Archive -Path "build/win/*" -DestinationPath "build/win.zip"
 
 
 echo "FINISHED"
