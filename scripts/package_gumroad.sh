@@ -18,13 +18,19 @@ unzip build/mac.zip -d build/mac >> /dev/null
 chmod -R u+X "build/mac"
 
 
-rm -rf "export"
+rm -rf "export/gumroad"
+
+mkdir -p "export/gumroad"
+
+timestamp="20231113"
+cp "export/blue_blender.zip" "export/gumroad/blue-$timestamp-blender.zip"
 
 engine_versions="UE_4.27 UE_5.2 UE_5.3"
 IFS=" "
 
+base=$(pwd)
 for engine_version in $engine_versions; do
-
+    cd "$base"
     echo "Exporting for $engine_version"
     release_path="export/gumroad"
     export_path="$release_path/$engine_version"
@@ -37,11 +43,13 @@ for engine_version in $engine_versions; do
 
     ue_plugin_path="$plugin_name"
     cp -r "$ue_plugin_path" "$export_path"
+    cp "export/blue_blender.zip" "$export_path"
 
     cp -r "build/win/$engine_version/$plugin_name/Binaries" "$export_path/$plugin_name/Binaries"
     cp -r "build/mac/$engine_version/$plugin_name" "$export_path"
 
-    zip -r "export/gumroad/vertexforge_1234_${engine_version}.zip" "$export_path"
+    cd "$export_path"
+    zip -r "../blue-$timestamp-${engine_version}.zip" "."
 done
 
 echo "Done!"
