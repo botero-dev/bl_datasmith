@@ -3688,7 +3688,7 @@ def create_object(obj):
 
 			
 # for now let's try writing the xml directly
-def collect_depsgraph(output, use_instanced_meshes):
+def collect_depsgraph(output, use_instanced_meshes, selected_only):
 	d = bpy.context.evaluated_depsgraph_get()
 	top_level_objs = []
 	instance_groups = {}
@@ -3696,6 +3696,8 @@ def collect_depsgraph(output, use_instanced_meshes):
 	last_parent = None
 	last_parent_data = None
 	for instance in d.object_instances:
+		if selected_only and not instance.object.original.select_get():
+			continue
 		
 		transform = collect_object_transform2(instance.object, instance.matrix_world)
 		was_instanced = False
@@ -4198,7 +4200,7 @@ def collect_and_save(context, args, save_path):
 		# with the depsgraph iterator, we don't start with root objects and then find children.
 		# with the new object iterator, we read the depsgraph evaluated object array
 		log.info("USE NEW OBJECT ITERATOR")
-		obj_output = collect_depsgraph(objects, use_instanced_meshes)
+		obj_output = collect_depsgraph(objects, use_instanced_meshes, selected_only)
 
 	anims = []
 	if export_animations:
