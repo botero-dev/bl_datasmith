@@ -22,8 +22,8 @@ rm -rf "export/gumroad"
 
 mkdir -p "export/gumroad"
 
-timestamp="20231113"
-cp "export/blue_blender.zip" "export/gumroad/blue-$timestamp-blender.zip"
+monotonic="4"
+cp "export/blue_blender.zip" "export/gumroad/blue-$monotonic-blender.zip"
 
 engine_versions="UE_4.27 UE_5.2 UE_5.3"
 IFS=" "
@@ -49,7 +49,8 @@ for engine_version in $engine_versions; do
     cp -r "build/mac/$engine_version/$plugin_name" "$export_path"
 
     cd "$export_path"
-    zip -r "../blue-$timestamp-${engine_version}.zip" "."
+    zip -r "../blue-$monotonic-${engine_version}.zip" "." > /dev/null
+    echo "Packaged:" "blue-$monotonic-${engine_version}.zip"
 done
 
 echo "Done!"
