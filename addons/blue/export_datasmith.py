@@ -1939,8 +1939,11 @@ def get_expression_inner(socket, exp_list, target_socket):
 			"BaseColor": get_expression(node.inputs['Base Color'], exp_list),
 			"Metallic": get_expression(node.inputs['Metallic'], exp_list),
 			"Roughness": get_expression(node.inputs['Roughness'], exp_list),
-			"Specular": get_expression(node.inputs['Specular'], exp_list),
 		}
+		specular = node.inputs.get("Specular IOR Level")
+		if not specular:
+			specular = node.inputs["Specular"]
+		bsdf["Specular"] = get_expression(specular, exp_list)
 
 
 		# only add opacity if alpha != 1
@@ -1954,7 +1957,9 @@ def get_expression_inner(socket, exp_list, target_socket):
 			bsdf['Opacity'] = get_expression(opacity_field, exp_list)
 
 
-		emission_field = node.inputs['Emission']
+		emission_field = node.inputs.get('Emission Color')
+		if not emission_field:
+			emission_field = node.inputs['Emission']
 		emission_strength_field = node.inputs['Emission Strength']
 		multiply_emission = False
 		if len(emission_strength_field.links) != 0:
@@ -1970,14 +1975,19 @@ def get_expression_inner(socket, exp_list, target_socket):
 			bsdf["EmissiveColor"] = get_expression(emission_field, exp_list)
 
 		use_clear_coat = False
-		clear_coat_field = node.inputs["Clearcoat"]
+
+		clear_coat_field = node.inputs.get("Coat Weight")
+		if not clear_coat_field:
+			clear_coat_field = node.inputs["Clearcoat"]
 		if len(clear_coat_field.links) != 0:
 			use_clear_coat = True
 		elif clear_coat_field.default_value != 0:
 			use_clear_coat = True
 		if use_clear_coat:
 			clear_coat_exp = get_expression(clear_coat_field, exp_list)
-			clear_coat_roughness_field = node.inputs["Clearcoat Roughness"]
+			clear_coat_roughness_field = node.inputs.get("Coat Roughness")
+			if not clear_coat_roughness_field:
+				clear_coat_roughness_field = node.inputs["Clearcoat Roughness"]
 			clear_coat_roughness_exp = get_expression(clear_coat_roughness_field, exp_list)
 			bsdf["ClearCoat"] = clear_coat_exp
 			bsdf["ClearCoatRoughness"] = clear_coat_roughness_exp
