@@ -1286,11 +1286,14 @@ def exp_mapping(node, exp_list):
 	n = Node("FunctionCall", { "Function": mapping_func })
 
 	input_vector = get_expression(node.inputs['Vector'], exp_list)
-	input_location = get_expression(node.inputs['Location'], exp_list)
 	input_rotation = get_expression(node.inputs['Rotation'], exp_list)
 	input_scale = get_expression(node.inputs['Scale'], exp_list)
+
 	n.push(exp_input("0", input_vector))
-	n.push(exp_input("1", input_location))
+	if not node.vector_type in ('NORMAL', 'VECTOR'):
+		input_location = get_expression(node.inputs['Location'], exp_list)
+		n.push(exp_input("1", input_location))
+
 	n.push(exp_input("2", input_rotation))
 	n.push(exp_input("3", input_scale))
 
@@ -1890,7 +1893,9 @@ def get_expression(field, exp_list, force_default=False, skip_default_warn=False
 			# maybe a color or a value was connected to a shader socket
 			# so we convert whatever value came to a basic emissive shader
 			value_exp = return_exp
+			exp_base_color = exp_color((0, 0, 0, 1), exp_list)
 			return_exp = {
+				"BaseColor": exp_base_color,
 				"EmissiveColor": value_exp,
 			}
 
@@ -2467,17 +2472,22 @@ def pbr_nodetree_material(material):
 		push_exp_input(main_passthrough, "1", first_passthrough_exp)
 		expressions["BaseColor"] = {"expression": exp_list.push(main_passthrough) }
 
-	# here we add those BaseColor, Roughness, etc... values to the UEPbrMaterial node
-	for key, value in expressions.items():
-		n.push(exp_output(key, value))
-
 	can_be_twosided = True
 
 	blend_method = material.blend_method
 	if blend_method == 'CLIP':
 		n.push('\n\t\t<Blendmode value="1"/>')
 		n.push('\n\t\t<OpacityMaskClipValue value="%f"/>' % max(material.alpha_threshold, 0.01))
-	#elif blend_method == 'HASHED': 
+	elif blend_method == 'HASHED': 
+		n.push('\n\t\t<Blendmode value="1"/>')
+		n.push('\n\t\t<OpacityMaskClipValue value="0.5"/>')
+		alpha_exp = expressions["Opacity"]
+		hashed_exp = Node("FunctionCall", { "Function": "/Engine/Functions/Engine_MaterialFunctions02/Utility/DitherTemporalAA" })
+
+		push_exp_input(hashed_exp, "0", alpha_exp)
+		new_alpha_exp = exp_list.push(hashed_exp)
+		expressions["Opacity"] = new_alpha_exp
+
 	# maybe we can check this earlier and decide
 	# to push a temporal hash mask node in the material?
 	elif blend_method == 'BLEND':
@@ -2492,6 +2502,11 @@ def pbr_nodetree_material(material):
 
 		if "Opacity" in expressions:
 			can_be_twosided = False
+
+	# here we add those BaseColor, Roughness, etc... values to the UEPbrMaterial node
+	# we don't do it before because blend_method HASHED adds more expressions
+	for key, value in expressions.items():
+		n.push(exp_output(key, value))
 
 	shading_model = "DefaultLit"
 	if "ClearCoat" in expressions:
@@ -2511,7 +2526,7 @@ def pbr_nodetree_material(material):
 
 	# this flag is enabled if any material hinted for two-sidedness or if the
 	# material is opaque and the user set to always write two-sided mats
-	if material_hint_twosided or config_always_twosided:
+	if material_hint_twosided:
 		n.push('\n\t\t<TwoSided enabled="True"/>')
 
 	return n
