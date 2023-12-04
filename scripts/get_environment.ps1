@@ -11,7 +11,7 @@ $build_number = ""
 $version_file = Get-Content "$env:PROJECT_ROOT/version.cfg"
 foreach ($line in $version_file) {
     if ($line.StartsWith("build_number=")) {
-        $project_version = $line -replace "build_number=",""
+        $build_number = $line -replace "build_number=",""
     }
 }
 

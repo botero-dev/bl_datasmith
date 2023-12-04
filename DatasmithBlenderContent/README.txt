@@ -8,7 +8,7 @@ This is the UE companion plugin to the Blender to Unreal Exporter addon.
 This plugin exposes implementations of Blender material nodes and other features
 to improve the quality when importing Datasmith scenes exported from Blender.
 
-You can also use these nodes directly if wanted.
+You can also use these nodes directly if desired.
 
 This can be installed in two ways:
 
