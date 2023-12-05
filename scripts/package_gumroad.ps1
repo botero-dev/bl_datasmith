@@ -35,19 +35,22 @@ if (Test-Path -Path $zip_path) {
 
 $plugin_name = "DatasmithBlenderContent"
 $release_path = "$base_path/export/gumroad"
+
+$bl_zip_name = "blue-${build_number}-blender.zip"
+$bl_zip_path = "$release_path/$bl_zip_name"
+
 if (Test-Path -Path $release_path) {
     Remove-Item -Path "$release_path" -Recurse -Force
 }
 New-Item -Path "$release_path" -ItemType Directory
 
-Copy-Item -Path "$build_path/blue-blender.zip" -Destination "$release_path/" -Recurse
+Copy-Item -Path "$build_path/blue-blender.zip" -Destination "$bl_zip_path" -Recurse
 
 $engine_versions = @(
     "UE_4.27"
     "UE_5.2"
     "UE_5.3"
 )
-
 
 foreach($engine_version in $engine_versions) {
 
@@ -66,13 +69,10 @@ foreach($engine_version in $engine_versions) {
     # and we will try to mix into the exported ue plugin the built versions we find in /build
 
     Write-Output "Copying : $build_path/blue-blender.zip to $export_path"
-    Copy-Item -Path "$build_path/blue-blender.zip" -Destination "$export_path/" -Recurse
-
+    Copy-Item -Path "$bl_zip_path" -Destination "$export_path/" -Recurse
 
     $ue_plugin_path = "$base_path/$plugin_name"
-
     Copy-Item -Path "$ue_plugin_path" -Destination "$export_path" -Recurse
-
 
     $win_path_bin = "$build_path/win/$engine_version/$plugin_name/Binaries/Win64"
     if (Test-Path -Path $win_path_bin) {
