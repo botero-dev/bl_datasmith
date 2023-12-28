@@ -1311,14 +1311,17 @@ def exp_normal(socket, exp_list):
 	cached_nodes[node] = cached_node
 	return exp_from_cache(cached_node, socket.name)
 
+
+MAT_CTX_NORMAL = "NORMAL"
 def exp_normal_map(socket, exp_list):
 	node_input = socket.node.inputs['Color']
 	# hack: is it safe to assume that everything under here is normal?
 	# maybe not, because it could be masks to mix normals
 	# most certainly, these wouldn't be colors (so should be non-srgb)
-	push_context("NORMAL")
+	push_context(MAT_CTX_NORMAL)
 	return_exp = get_expression(node_input, exp_list)
 	pop_context()
+
 
 	strength_input = socket.node.inputs["Strength"]
 	if strength_input.links or strength_input.default_value != 1.0:
@@ -1835,7 +1838,16 @@ def get_expression(field, exp_list, force_default=False, skip_default_warn=False
 			exp = exp_scalar(field.default_value, exp_list)
 			return {"expression": exp, "OutputIndex": 0}
 		elif field.type == 'RGBA':
-			exp = exp_color(field.default_value, exp_list)
+			color_value = field.default_value
+
+			if get_context() == MAT_CTX_NORMAL:
+				color_value = (
+					color_value[0] * 2.0 - 1.0,
+					color_value[1] * 2.0 - 1.0,
+					color_value[2] * 2.0 - 1.0,
+					color_value[3]
+				)
+			exp = exp_color(color_value, exp_list)
 			return {"expression": exp, "OutputIndex": 0}
 		elif field.type == 'VECTOR':
 			use_vector_default = force_default or type(field.default_value) in {Vector, Euler}
