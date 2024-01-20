@@ -2654,7 +2654,12 @@ def fill_umesh(umesh, bl_mesh):
 	normals = np.empty(num_loops * 3, np.float32)
 	loop_triangles.foreach_get('split_normals', normals)
 	normals = normals.reshape((-1, 3))
-#	normals = normals @ matrix_normals
+
+	# in case vert has invalid normals, put some dummy data so UE doesn't try to recalculate
+	normals_drift = np.linalg.norm(normals, axis=1) - 1
+	normals_faulty = np.abs(normals_drift) > 0.008
+	normals[normals_faulty] = (0, 0, 1)
+
 	umesh.vertex_normals = np.ascontiguousarray(normals, "<f4")
 
 	#finish inline mesh_copy_triangulate
