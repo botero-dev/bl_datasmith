@@ -1,4 +1,5 @@
 
+
 $base_path = "$PSScriptRoot/.."
 Push-Location $base_path
 
@@ -8,7 +9,7 @@ New-Item -Path $build_path -ItemType Directory -Force
 
 $username="abotero"
 $host_win="pag-pc-mini.local"
-$host_mac="andress-mac-mini.local"
+$host_mac="andress-mini"
 
 $prefix_mac="${username}@${host_mac}"
 
@@ -20,6 +21,9 @@ echo "Executing MacOS code"
 
 echo ssh "$prefix_mac" sh "$script_filename"
 ssh "$prefix_mac" sh "$script_filename"
+
+if ($LASTEXITCODE -ne 0) { throw "Exit code is $LASTEXITCODE" }
+
 
 echo "Pulling MacOS artifact"
 scp "${prefix_mac}:tmp/vertexforge_build/build/mac.zip" "build/mac.zip"

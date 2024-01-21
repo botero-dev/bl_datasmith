@@ -18,8 +18,10 @@ mkdir -p "$base_path/build/mac"
 
 launcher_apps="$HOME/Library/Application Support/Epic/UnrealEngineLauncher/LauncherInstalled.dat"
 
+# 5.0 doesn't build on mac 
 engine_versions=(
     "UE_4.27"
+    "UE_5.1"
     "UE_5.2"
     "UE_5.3"
 )
