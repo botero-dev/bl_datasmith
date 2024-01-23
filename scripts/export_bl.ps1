@@ -20,7 +20,35 @@ Write-Output "Copying to $bl_target_path"
 Copy-Item -Path "$base_path/addons/blue" -Destination "$bl_target_path" -Recurse
 Remove-Item "$bl_target_path/__pycache__" -Recurse -ErrorAction SilentlyContinue
 
-# TODO: inject some version data into the build
+
+# Specify the file path
+$init_path = "$bl_target_path/__init__.py"
+
+
+
+& $PSScriptRoot/get_environment.ps1
+$build_number = $env:BUILD_NUMBER
+
+$fixed = $false
+
+$new_content = foreach($line in Get-Content $init_path) {
+    if($line -match '(1, 1, 0)'){
+        $fixed = $true
+        # modify the line
+        $line -replace "0","$build_number"
+    }
+    else {
+        # leave the line unmodified
+        $line
+    }
+}
+
+Write-Output $new_content
+
+if (-not $fixed) {
+    throw
+}
+
 
 
 $zip_path = "${bl_target_path}-blender.zip"
