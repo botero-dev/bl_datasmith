@@ -43,7 +43,7 @@ $new_content = foreach($line in Get-Content $init_path) {
     }
 }
 
-Write-Output $new_content
+Set-Content -Path $init_path -Value $new_content
 
 if (-not $fixed) {
     throw

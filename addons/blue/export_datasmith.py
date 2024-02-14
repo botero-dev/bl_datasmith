@@ -2493,12 +2493,13 @@ def pbr_nodetree_material(material):
 	elif blend_method == 'HASHED': 
 		n.push('\n\t\t<Blendmode value="1"/>')
 		n.push('\n\t\t<OpacityMaskClipValue value="0.5"/>')
-		alpha_exp = expressions["Opacity"]
-		hashed_exp = Node("FunctionCall", { "Function": "/Engine/Functions/Engine_MaterialFunctions02/Utility/DitherTemporalAA" })
+		alpha_exp = expressions.get("Opacity")
+		if alpha_exp:
+			hashed_exp = Node("FunctionCall", { "Function": "/Engine/Functions/Engine_MaterialFunctions02/Utility/DitherTemporalAA" })
 
-		push_exp_input(hashed_exp, "0", alpha_exp)
-		new_alpha_exp = exp_list.push(hashed_exp)
-		expressions["Opacity"] = new_alpha_exp
+			push_exp_input(hashed_exp, "0", alpha_exp)
+			new_alpha_exp = exp_list.push(hashed_exp)
+			expressions["Opacity"] = new_alpha_exp
 
 	# maybe we can check this earlier and decide
 	# to push a temporal hash mask node in the material?
