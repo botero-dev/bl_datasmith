@@ -1,4 +1,6 @@
 #!/usr/bin/env sh
+# export_bl.sh
+# Copyright 2024 Andrés Botero 
 
 echo "export_bl.sh"
 

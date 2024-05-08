@@ -1,4 +1,5 @@
-
+# export_bl.ps1
+# Copyright 2024 Andrés Botero 
 
 $base_path = Resolve-Path "$PSScriptRoot/.."
 

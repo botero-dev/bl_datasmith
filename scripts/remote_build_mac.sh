@@ -1,3 +1,5 @@
+# remote_build_mac.sh
+# Copyright 2024 Andrés Botero
 
 build_path="tmp/vertexforge_build"
 

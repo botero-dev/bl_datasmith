@@ -1,3 +1,5 @@
+# remote_build_win.ps1
+# Copyright 2024 Andrés Botero
 
 $build_path="C:/tmp/vertexforge_build"
 Remove-Item -Path $build_path -Recurse -Force

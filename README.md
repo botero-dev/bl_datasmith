@@ -11,26 +11,21 @@ A full deployment would follow `scripts/all.ps1`
 Working
 --------
 
-The `scripts/setup_bl.ps1` script clones the blender plugin in an `addons`
-folder so we can set the working copy of this repo as a scripts folder in
-blender.
-
-The `scripts/setup_ue.ps1` script clones the unreal plugin to a folder called
-`DatasmithBlenderContent`. This should be copied to a project to build the
-plugin.
+Blender plugin source code is at the folder `addons/blue`. This accomodation
+allows us to set the repo root folder as a scripts source folder in Blender.
 
 
 Building
 --------
 
-`scripts/export_bl.ps1` cleans and then checks out the blender plugin in the
-`build` folder
+`scripts/export_bl.ps1` creates the `blue-blender.zip` file that can be loaded
+in blender as an addon.
 
 `scripts/build_all_win.ps1` builds the UE plugin with many engine versions.
 `scripts/build_all_mac.sh` does the same in Mac.
 
-you can build the plugin in a remote mac and then pull it back with the
-`remote_build_mac.ps1` script.
+you can build the plugin in remote hosts and then pull it back with the
+`assemble.sh` or `assemble.ps1` scripts.
 
 
 The `scripts/package_epic.ps1` makes a zip package that includes the UE

@@ -1,4 +1,6 @@
 #!/usr/bin/env sh
+# assemble.sh
+# Copyright 2024 Andrés Botero 
 
 ssh-agent
 ssh-add
@@ -26,10 +28,10 @@ prefix_win="${username}@${host_win}"
 
 echo "Pushing Windows boostrap code"
 script_filename="bootstrap_win.ps1"
-scp "scripts/remote_build_windows.ps1" "${prefix_win}:${script_filename}"
+scp "scripts/remote_build_win.ps1" "${prefix_win}:${script_filename}"
 
 echo "Executing Windows code"
-#ssh "$prefix_win" powershell "./${script_filename}"
+ssh "$prefix_win" powershell "./${script_filename}"
 
 echo "Pulling Windows artifact"
 scp -X buffer=204800 "${prefix_win}:/tmp/vertexforge_build/build/win.zip" "build/win.zip"

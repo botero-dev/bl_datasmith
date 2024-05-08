@@ -1,3 +1,5 @@
+# assemble.ps1
+# Copyright 2024 Andrés Botero 
 
 
 $base_path = "$PSScriptRoot/.."
@@ -33,7 +35,7 @@ $prefix_win="${username}@${host_win}"
 
 echo "Pushing Windows boostrap code"
 $script_filename="bootstrap_win.ps1"
-scp "scripts/remote_build_windows.ps1" "${prefix_win}:${script_filename}"
+scp "scripts/remote_build_win.ps1" "${prefix_win}:${script_filename}"
 
 echo "Executing Windows code"
 ssh "$prefix_win" powershell "./${script_filename}"
