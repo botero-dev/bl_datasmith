@@ -2,15 +2,64 @@
 # export_bl.sh
 # Copyright 2024 Andrés Botero 
 
-echo "export_bl.sh"
+. scripts/get_environment.sh
 
-rm -rf export/blue_blender
-rm export/blue_blender.zip
+# Get the script directory
+script_dir="$PROJECT_ROOT/scripts"
+base_path="$PROJECT_ROOT"
 
-cp -r addons/blue export/blue_blender
+# Assumed to exist because of .keep file
+build_folder="$base_path/build"
 
-rm -rf export/blue_blender/__pycache__
+mkdir -p "$build_folder"
 
-cd export
+# Package blender plugin
+bl_product_name="blue"
+bl_target_path="$build_folder/${bl_product_name}"
 
-zip -r "blue_blender.zip" "blue_blender"
+if [ -d "$bl_target_path" ]; then
+    echo "Cleaning $bl_target_path folder"
+    rm -rf "$bl_target_path"
+fi
+
+echo "Copying to $bl_target_path"
+cp -r "$base_path/addons/blue" "$bl_target_path"
+rm -rf "$bl_target_path/__pycache__"
+
+# Specify the file path
+init_path="$bl_target_path/__init__.py"
+
+# Get the environment variables
+source "$script_dir/get_environment.sh"
+build_number=$BUILD_NUMBER
+
+fixed=false
+
+echo "Fixing __init__.py with build_number=$BUILD_NUMBER"
+new_content=""
+while IFS= read -r line; do
+    if [[ $line =~ (1, 1, 0) ]]; then
+        fixed=true
+        # Modify the line
+        new_content+="${line//0/$build_number}"$'\n'
+    else
+        # Leave the line unmodified
+        new_content+="$line"$'\n'
+    fi
+done < "$init_path"
+
+echo "$new_content" > "$init_path"
+
+if ! $fixed; then
+    echo "Error: The version line was not found or modified."
+    exit 1
+fi
+
+zip_path="${bl_target_path}-blender.zip"
+if [ -f "$zip_path" ]; then
+    echo "Cleaning $zip_path"
+    rm "$zip_path"
+fi
+
+echo "Creating $zip_path"
+zip -r "$zip_path" "$bl_target_path"

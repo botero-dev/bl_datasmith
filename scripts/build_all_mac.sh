@@ -28,16 +28,16 @@ engine_versions=(
 )
 
 
-pushd "$base_path/build/mac" >> /dev/null
 
 # Iterate over the list and call echo with each string
 for version in "${engine_versions[@]}"; do
 	ue_path=$("$base_path/scripts/get_path_for_ue.py" "$launcher_apps" "$version")
 	target_path="$base_path/build/mac/$version"
 	"$base_path/scripts/build_single_mac.sh" --target_path "$target_path" --ue_path "$ue_path"
-	zip -r mac.zip "$version/DatasmithBlenderContent/Binaries"
 done
 
-mv "$base_path/build/mac/mac.zip" "$base_path/build/mac.zip"
+pushd build/mac > /dev/null
+rm -rf "$base_path/build/mac.zip"
+zip -r "$base_path/build/mac.zip" ./*
 
 popd > /dev/null

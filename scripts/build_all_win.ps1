@@ -24,4 +24,6 @@ foreach ( $version in $versions ) {
     & scripts/build_single_win.ps1 -target_path "$base_path/build/win/$version/DatasmithBlenderContent" -ue_path $ue_path
 }
 
+Compress-Archive -Path "build/win/*" -DestinationPath "build/win.zip"
+
 Pop-Location

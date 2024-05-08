@@ -11,7 +11,5 @@ pushd $build_path
 
 ./scripts/build_all_mac.sh
 
-# we don't zip in this one because build_all_mac already does
-
 echo "FINISHED"
 

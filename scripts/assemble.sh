@@ -2,6 +2,8 @@
 # assemble.sh
 # Copyright 2024 Andrés Botero 
 
+echo "assemble.sh"
+
 ssh-agent
 ssh-add
 
@@ -18,7 +20,7 @@ script_filename="bootstrap_mac.sh"
 scp "scripts/remote_build_mac.sh" "${prefix_mac}:${script_filename}"
 
 echo "Executing MacOS code"
-#ssh "$prefix_mac" sh "$script_filename"
+ssh "$prefix_mac" sh "$script_filename"
 
 echo "Pulling MacOS artifact"
 scp "${prefix_mac}:tmp/vertexforge_build/build/mac.zip" "build/mac.zip"

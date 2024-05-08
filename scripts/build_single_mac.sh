@@ -56,5 +56,3 @@ echo "Running UAT BuildPlugin"
 uat_path="$ue_path/Engine/Build/BatchFiles/RunUAT.command"
 
 "$uat_path" BuildPlugin "-plugin=$plugin_path/DatasmithBlenderContent.uplugin" "-package=$target_path" -TargetPlatforms=Mac
-
-rm -rf "$target_path/Intermediate"
