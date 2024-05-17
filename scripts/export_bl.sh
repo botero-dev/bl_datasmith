@@ -30,7 +30,7 @@ rm -rf "$bl_target_path/__pycache__"
 init_path="$bl_target_path/__init__.py"
 
 # Get the environment variables
-source "$script_dir/get_environment.sh"
+. "$script_dir/get_environment.sh"
 build_number=$BUILD_NUMBER
 
 fixed=false
@@ -38,14 +38,14 @@ fixed=false
 echo "Fixing __init__.py with build_number=$BUILD_NUMBER"
 new_content=""
 while IFS= read -r line; do
-    if [[ $line =~ (1, 1, 0) ]]; then
-        fixed=true
-        # Modify the line
-        new_content+="${line//0/$build_number}"$'\n'
-    else
-        # Leave the line unmodified
-        new_content+="$line"$'\n'
-    fi
+    case "$line" in
+        *"(1, 1, 0)"*)
+            # Modify the line: replace '(1, 1, 0)' with '(1, 1, build_number)'
+            fixed=true
+            line=$(echo "$line" | sed "s/(1, 1, 0)/(1, 1, $build_number)/")
+            ;;
+    esac
+    new_content="$new_content$line\n"
 done < "$init_path"
 
 echo "$new_content" > "$init_path"

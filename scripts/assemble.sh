@@ -2,6 +2,8 @@
 # assemble.sh
 # Copyright 2024 Andrés Botero 
 
+set -euv
+
 echo "assemble.sh"
 
 ssh-agent

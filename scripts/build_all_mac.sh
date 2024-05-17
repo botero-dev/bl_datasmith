@@ -2,6 +2,9 @@
 # build_all_mac.sh
 # Copyright Andrés Botero 2023
 
+echo "build_all_mac.sh"
+set -euv
+
 script_file="$0"
 script_dir=$(dirname "${BASH_SOURCE[0]}")
 

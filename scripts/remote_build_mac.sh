@@ -1,12 +1,18 @@
+#!/usr/bin/env sh
 # remote_build_mac.sh
 # Copyright 2024 Andrés Botero
+
+echo "remote_build_mac.sh"
+set -euv
 
 build_path="tmp/vertexforge_build"
 
 rm -rf $build_path
 mkdir -p $build_path
 
-git clone git@github.com:vertexforge/vertexforge.git $build_path
+
+echo git clone "git@github.com:vertexforge/vertexforge.git" "$build_path"
+git clone "git@github.com:vertexforge/vertexforge.git" "$build_path"
 pushd $build_path
 
 ./scripts/build_all_mac.sh
