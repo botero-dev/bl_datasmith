@@ -20,13 +20,13 @@ echo unzip build/mac.zip -d build/mac
 unzip build/mac.zip -d build/mac >> /dev/null
 chmod -R u+X "build/mac"
 
-
 rm -rf "export/gumroad"
 
 mkdir -p "export/gumroad"
 
 monotonic="$BUILD_NUMBER"
-cp "build/blue-blender.zip" "export/blue-$monotonic-blender.zip"
+blender_export_path="export/gumroad/blue-$monotonic-blender.zip"
+cp "build/blue-blender.zip" "$blender_export_path"
 
 engine_versions="UE_4.27 UE_5.0 UE_5.1 UE_5.2 UE_5.3 UE_5.4"
 IFS=" "
@@ -46,10 +46,11 @@ for engine_version in $engine_versions; do
 
     ue_plugin_path="$plugin_name"
     cp -r "$ue_plugin_path" "$export_path"
-    cp "export/blue-$monotonic-blender.zip" "$export_path"
+    cp "$blender_export_path" "$export_path"
 
-    cp -r "build/win/$engine_version/$plugin_name/Binaries" "$export_path/$plugin_name/Binaries"
+    cp -r "build/win/$engine_version/$plugin_name" "$export_path"
     cp -r "build/mac/$engine_version/$plugin_name" "$export_path"
+    cp -r "build/linux/$engine_version/$plugin_name" "$export_path"
 
     cd "$export_path"
     zip -r "../blue-$monotonic-${engine_version}.zip" "." > /dev/null

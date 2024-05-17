@@ -53,6 +53,14 @@ plugin_path="$base_path/DatasmithBlenderContent"
 
 echo "Running UAT BuildPlugin"
 
-uat_path="$ue_path/Engine/Build/BatchFiles/RunUAT.command"
+uat_path="$ue_path/Engine/Build/BatchFiles/RunUAT.sh"
+platform="Linux"
 
-"$uat_path" BuildPlugin "-plugin=$plugin_path/DatasmithBlenderContent.uplugin" "-package=$target_path" -TargetPlatforms=Mac
+if [[ $(uname) == "Darwin" ]]; then
+  uat_path="$ue_path/Engine/Build/BatchFiles/RunUAT.command"
+  platform="Mac"
+fi
+
+chmod +x "$uat_path"
+
+"$uat_path" BuildPlugin "-plugin=$plugin_path/DatasmithBlenderContent.uplugin" "-package=$target_path" "-TargetPlatforms=$platform"

@@ -30,13 +30,11 @@ engine_versions=(
     "UE_5.4"
 )
 
-
-
 # Iterate over the list and call echo with each string
 for version in "${engine_versions[@]}"; do
 	ue_path=$("$base_path/scripts/get_path_for_ue.py" "$launcher_apps" "$version")
 	target_path="$base_path/build/mac/$version"
-	"$base_path/scripts/build_single_mac.sh" --target_path "$target_path" --ue_path "$ue_path"
+	"$base_path/scripts/build_single_unix.sh" --target_path "$target_path" --ue_path "$ue_path"
 done
 
 pushd build/mac > /dev/null

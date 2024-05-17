@@ -91,13 +91,9 @@ foreach($engine_version in $engine_versions) {
         Copy-Item -Path "$mac_path_bin" -Destination "$export_path/$plugin_name/Binaries/Mac" -Recurse
     }
 
-
-
-
     # for package_gumroad:
     # and build_all_win and build_all_mac called
     # and result were aggregated in /build/platform folders
-
 
     # Write-Host "Copying README"
     # Copy-Item -Path "README.txt" -Destination "$build_path/"
