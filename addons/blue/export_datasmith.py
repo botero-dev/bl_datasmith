@@ -2627,7 +2627,9 @@ def fill_umesh(umesh, bl_mesh):
 	bm.to_mesh(m)
 	bm.free()
 	
-	m.calc_normals_split()
+	has_calc_normals = hasattr(m, "calc_normals_split")
+	if has_calc_normals:
+		m.calc_normals_split()
 	m.transform(matrix_datasmith)
 	
 	vertices = m.vertices
@@ -2655,6 +2657,8 @@ def fill_umesh(umesh, bl_mesh):
 	normals = np.empty(num_loops * 3, np.float32)
 	loop_triangles.foreach_get('split_normals', normals)
 	normals = normals.reshape((-1, 3))
+	if not has_calc_normals:
+		normals *= -1
 
 	# in case vert has invalid normals, put some dummy data so UE doesn't try to recalculate
 	normals_drift = np.linalg.norm(normals, axis=1) - 1

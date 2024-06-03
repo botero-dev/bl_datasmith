@@ -31,7 +31,7 @@ $versions = @{
     "2_9" =    @{ version="2.93"; patch=18 };
     "3_3" =    @{ version="3.3";  patch=12 };
     "3_6" =    @{ version="3.6";  patch=5  };
-    "latest" = @{ version="4.0";  patch=1  };
+    "latest" = @{ version="4.1";  patch=1  };
 }
 
 # TODO: make two phase export
