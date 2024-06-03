@@ -1406,7 +1406,7 @@ def exp_new_geometry(socket, exp_list):
 		output = Node("VertexTangentWS")
 		return { "expression": exp_list.push(output) }
 	if socket_name == "True Normal":
-		output = Node("VertexNormalWS")
+		output = Node("FunctionCall", {"Function": "/DatasmithBlenderContent/MaterialFunctions/BlenderTrueNormal"})
 		return { "expression": exp_list.push(output) }
 	if socket_name == "Incoming":
 		output = Node("FunctionCall", {"Function": "/DatasmithBlenderContent/MaterialFunctions/Incoming"})
