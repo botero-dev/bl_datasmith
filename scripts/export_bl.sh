@@ -55,11 +55,14 @@ if ! $fixed; then
     exit 1
 fi
 
-zip_path="${bl_target_path}-blender.zip"
+# zip path is local to the build forlder
+zip_path="${bl_product_name}-blender.zip"
 if [ -f "$zip_path" ]; then
     echo "Cleaning $zip_path"
     rm "$zip_path"
 fi
 
+cd "$build_folder"
 echo "Creating $zip_path"
-zip -r "$zip_path" "$bl_target_path"
+zip -r "$zip_path" "$bl_product_name"
+cd "$OLDPWD"
