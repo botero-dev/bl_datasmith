@@ -27,7 +27,8 @@ cp -r "$base_path/addons/blue" "$bl_target_path"
 rm -rf "$bl_target_path/__pycache__"
 
 # Specify the file path
-init_path="$bl_target_path/__init__.py"
+init_path="$base_path/addons/blue/__init__.py"
+target_path="$bl_target_path/__init__.py"
 
 # Get the environment variables
 . "$script_dir/get_environment.sh"
@@ -36,7 +37,8 @@ build_number=$BUILD_NUMBER
 fixed=false
 
 echo "Fixing __init__.py with build_number=$BUILD_NUMBER"
-new_content=""
+
+rm -f "$target_path"
 while IFS= read -r line; do
     case "$line" in
         *"(1, 1, 0)"*)
@@ -45,10 +47,10 @@ while IFS= read -r line; do
             line=$(echo "$line" | sed "s/(1, 1, 0)/(1, 1, $build_number)/")
             ;;
     esac
-    new_content="$new_content$line\n"
+    printf "%s\n" "$line" >> "$target_path"
+
 done < "$init_path"
 
-echo "$new_content" > "$init_path"
 
 if ! $fixed; then
     echo "Error: The version line was not found or modified."
