@@ -1,6 +1,9 @@
 # Changelog
 All notable changes to this project will be documented in this file.
-Features marked with `*` require the UE4 plugin to work.
+
+
+## [10] 2025-01-04
++ Added support for UE 5.5
 
 
 ## [2.0] 2022-08-04

@@ -53,6 +53,7 @@ $engine_versions = @(
     "UE_5.2"
     "UE_5.3"
     "UE_5.4"
+    "UE_5.5"
 )
 
 foreach($engine_version in $engine_versions) {
