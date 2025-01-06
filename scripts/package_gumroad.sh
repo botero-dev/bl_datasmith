@@ -28,7 +28,7 @@ monotonic="$BUILD_NUMBER"
 blender_export_path="export/gumroad/blue-$monotonic-blender.zip"
 cp "build/blue-blender.zip" "$blender_export_path"
 
-engine_versions="UE_4.27 UE_5.0 UE_5.1 UE_5.2 UE_5.3 UE_5.4 UE_5.5"
+engine_versions="UE_4.27 UE_5.4 UE_5.5"
 IFS=" "
 
 base=$(pwd)

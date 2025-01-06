@@ -18,9 +18,6 @@ rm -rf "$base_path/build/linux"
 mkdir -p "$base_path/build/linux"
 
 engine_versions=(
-    "5.1"
-    "5.2"
-    "5.3"
     "5.4"
     "5.5"
 )

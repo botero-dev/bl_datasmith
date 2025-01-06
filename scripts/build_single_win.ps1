@@ -25,6 +25,13 @@ if (!$ue_path) {
 $uat_path = "$ue_path/Engine/Build/BatchFiles/RunUAT.bat"
 $plugin_path = "$base_path/DatasmithBlenderContent/DatasmithBlenderContent.uplugin"
 
-& $uat_path BuildPlugin "-plugin=$plugin_path" "-package=$target_path" -TargetPlatforms=Win64
+$cmd_args = @(
+    "BuildPlugin",
+    "-plugin=$plugin_path",
+    "-package=$target_path",
+    "-TargetPlatforms=Win64"
+)
+echo "$uat_path $cmd_args"
+& $uat_path @cmd_args
 
 Pop-Location
