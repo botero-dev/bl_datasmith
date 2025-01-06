@@ -27,7 +27,7 @@ for version in "${engine_versions[@]}"; do
     echo version $version
     escaped_version=$(echo "$version" | sed 's/\./\\./g')
     echo escaped_version $escaped_version
-    search_path="$HOME/Downloads"
+    search_path="$HOME/Epic Games"
     ue_path=$(ls "$search_path" | grep -E "Unreal_Engine_${escaped_version}\.[0-9]$")
     ue_path="$search_path/$ue_path"
     echo ue_path $ue_path
