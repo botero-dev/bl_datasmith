@@ -46,7 +46,8 @@ fi
 # add:
 #pragma clang diagnostic ignored "-Wbitwise-instead-of-logical"
 #pragma clang diagnostic ignored "-Wunused-but-set-variable"
-
+#pragma clang diagnostic ignored "-Wdeprecated-builtins"
+#pragma clang diagnostic ignored "-Wsingle-bit-bitfield-constant-conversion"
 
 target_path="$target_path/DatasmithBlenderContent"
 plugin_path="$base_path/DatasmithBlenderContent"
