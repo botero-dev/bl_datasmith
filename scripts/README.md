@@ -1,27 +1,7 @@
-Blender IO Datasmith
-====================
+Blender IO Datasmith Scripts
+============================
 
-This repo contains a Blender addon to export Epic Games Datasmith format from
-Blender, and a corresponding Plugin for Unreal Engine to support some features
-that Blender can export into the Datasmith format.
-
-Installation
-------------
-The Blender addon is provided free of charge to download from the GitHub
-releases website. Additionally, you can pull the entire repository and add it
-to the Blender scripts search paths. This will work seamlessly as Blender looks
-up for a folder called "addons", and loads the modules from there.
-
-The Unreal Engine plugin is provided as source code only. If you're interested in trying it out, you can compile it yourself or you can acquire it from the Gumroad Sale Page
-
-
-
-This folder wraps the build environment for the Vertexforge project. It has
-scripts to place them in specific places and deal with compiling and
-packaging them. The scripts are located in the unsurprisingly named `scripts`
-folder.
-
-A full deployment would follow `scripts/all.ps1`
+A full build of the plugin would follow `scripts/all.ps1`
 
 Working
 --------

@@ -28,10 +28,9 @@ $demos_folder = "$root_folder/demos"
 $test_csv_rows = Import-Csv "$demos_folder/test_files.csv"
 
 $versions = @{
-    "2_9" =    @{ version="2.93"; patch=18 };
-    "3_3" =    @{ version="3.3";  patch=12 };
-    "3_6" =    @{ version="3.6";  patch=5  };
-    "latest" = @{ version="4.1";  patch=1  };
+    "3_6" =    @{ version="3.6";  patch=21  };
+    "4_2" =    @{ version="4.2";  patch=8  };
+    "latest" = @{ version="4.4";  patch=0  };
 }
 
 # TODO: make two phase export
@@ -43,7 +42,7 @@ echo "dir,name,status,time_seconds" > $report_path
 
 foreach ($test_row in $test_csv_rows) {
 
-    # skip any scene not in test group if we are using the "test" 
+    # skip any scene not in test group if we are using the "test"
     if ($test) {
         if (-not [boolean]$test_row.test) {
             continue
@@ -98,7 +97,7 @@ foreach ($test_row in $test_csv_rows) {
         "-b", $file_path,
         #"--log-level", "-1",
         #"--log-file", "${target_file_path}.log",
-        #"--debug-all", 
+        #"--debug-all",
         "--addons", "blue",
         "--python-exit-code", "17",
         "--python", "$scripts_folder/bl_export_datasmith.py"

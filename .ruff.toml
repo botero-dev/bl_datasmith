@@ -1,0 +1,4 @@
+line-length = 240
+
+[format]
+indent-style = "tab"

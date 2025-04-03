@@ -1,1 +1,13 @@
-Copyright Andrés Botero 2023
+Copyright Andrés Botero 2023-2025
+
+This project contains files licensed under multiple licenses:
+
+- The contents of the `addons/io_scene_datasmith` directory are licensed under
+  the GNU General Public License (GPL) version X. See
+  `addons/io_scene_datasmith/LICENSE` for details.
+- The contents of the `DatasmithBlenderContent` directory are licensed under a
+  custom license that permits redistribution of source code but prohibits
+  redistribution of compiled binaries for UnrealEditor. See
+  `DatasmithBlenderContent/LICENSE` for details.
+
+Each directory contains its respective license file.
