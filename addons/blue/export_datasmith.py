@@ -249,6 +249,11 @@ def exp_tex_image(socket, exp_list):
 		texture_exp.push(Node("Coordinates", tex_coord_exp))
 
 	exp_idx = exp_list.push(texture_exp)
+
+	if texture_type == MAT_CTX_NORMAL:
+		normal_to_01 = Node("FunctionCall", {"Function": "/DatasmithBlenderContent/MaterialFunctions/NormalTo01"})
+		push_exp_input(normal_to_01, "0", exp_idx)
+		exp_idx = exp_list.push(normal_to_01)
 	cached_node = (exp_idx, NODE_TEX_IMAGE_OUTPUTS)
 	cached_nodes[node] = cached_node
 
@@ -1375,17 +1380,16 @@ def exp_normal_map(socket, exp_list):
 	node_input = socket.node.inputs["Color"]
 	# hack: is it safe to assume that everything under here is normal?
 	# maybe not, because it could be masks to mix normals
-	# most certainly, these wouldn't be colors (so should be non-srgb)
-	push_context(MAT_CTX_NORMAL)
+	# most certainly, these wouldn't be colors (so should be non-srgb nonetheless)
+	push_texture_context(MAT_CTX_NORMAL)
 	return_exp = get_expression(node_input, exp_list)
-	pop_context()
+	pop_texture_context()
 
 	strength_input = socket.node.inputs["Strength"]
-	if strength_input.links or strength_input.default_value != 1.0:
-		node_strength = Node("FunctionCall", {"Function": "/DatasmithBlenderContent/MaterialFunctions/NormalStrength"})
-		node_strength.push(exp_input("0", return_exp))
-		node_strength.push(exp_input("1", get_expression(strength_input, exp_list)))
-		return_exp = {"expression": exp_list.push(node_strength)}
+	node_strength = Node("FunctionCall", {"Function": "/DatasmithBlenderContent/MaterialFunctions/NormalStrength"})
+	node_strength.push(exp_input("0", return_exp))
+	node_strength.push(exp_input("1", get_expression(strength_input, exp_list)))
+	return_exp = {"expression": exp_list.push(node_strength)}
 	return return_exp
 
 
@@ -1755,12 +1759,12 @@ def exp_bump(node, exp_list):
 	exp_invert = exp_scalar(-1 if node.invert else 1, exp_list)
 	push_exp_input(bump_node, "0", exp_invert)
 
-	push_context(MAT_CTX_BUMP)
+	push_texture_context(MAT_CTX_BUMP)
 	inputs = node.inputs
 	push_exp_input(bump_node, "1", get_expression(inputs["Strength"], exp_list))
 	push_exp_input(bump_node, "2", get_expression(inputs["Distance"], exp_list))
 	push_exp_input(bump_node, "3", get_expression(inputs["Height"], exp_list))
-	pop_context()
+	pop_texture_context()
 
 	push_exp_input(bump_node, "4", get_expression(inputs["Normal"], exp_list, skip_default_warn=True))
 	return {"expression": exp_list.push(bump_node)}
@@ -1888,11 +1892,11 @@ MAT_CTX_BUMP = "BUMP"
 context_stack = []
 
 
-def push_context(context):
+def push_texture_context(context):
 	context_stack.append(context)
 
 
-def pop_context():
+def pop_texture_context():
 	context_stack.pop()
 
 
