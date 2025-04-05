@@ -170,10 +170,6 @@ class Node:
 		return size
 
 
-def node_value(name, value):
-	return Node(name, {"value": "%f" % value})
-
-
 class UDMesh:
 	def __init__(self, name):
 		self.name = name
