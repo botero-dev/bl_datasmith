@@ -1,35 +1,41 @@
 # Datasmith exporter for Blender
 # Copyright 2018-2022 Andrés Botero
 
+import logging
 import math
-import os
-import time
-import shutil
-from os import path
 import numpy as np
+import os
+import shutil
+import struct
+import time
+from hashlib import sha1
+from os import path
 
 import bpy
 import idprop
 import bmesh
 from mathutils import Matrix
 
-from .data_types import UDMesh, Node, sanitize_name, calc_hash
-from . import export_material
+from .data_types import Node, sanitize_name
+from .export_material import collect_all_materials, get_texture_name
 
-import logging
 
 log = logging.getLogger("bl_datasmith")
+
+
+def calc_hash(image_path):
+	result = sha1()
+	with open(image_path, "rb") as f:
+		buf = f.read(524288)  # read 512KB
+		while len(buf) > 0:
+			result.update(buf)
+			buf = f.read(524288)
+	return result.hexdigest()
 
 
 matrix_datasmith = Matrix.Scale(100, 4)
 matrix_datasmith[1][1] *= -1.0
 
-# optimize: maybe set this as a numpy array directly?
-matrix_normals = [
-	[1, 0, 0],
-	[0, -1, 0],
-	[0, 0, 1],
-]
 
 # used for lights and cameras, whose forward is (0, 0, -1) and its right is (1, 0, 0)
 matrix_forward = Matrix(
@@ -40,6 +46,182 @@ matrix_forward = Matrix(
 		(0, 0, 0, 1),
 	)
 )
+
+
+log = logging.getLogger("bl_datasmith")
+
+
+def read_array_data(io, data_struct):
+	struct_size = struct.calcsize(data_struct)
+	data_struct = "<" + data_struct  # force little endianness
+
+	count = struct.unpack("<I", io.read(4))[0]
+	data = io.read(count * struct_size)
+	unpacked_data = list(struct.iter_unpack(data_struct, data))
+	return [tup[0] if len(tup) == 1 else tup for tup in unpacked_data]
+
+
+def flatten(it):
+	data = []
+	for d in it:
+		if isinstance(d, float) or isinstance(d, int):
+			data.append(d)
+		else:
+			data += [*d]
+	return data
+
+
+def write_array_data(io, data_struct, data):
+	# first get data length
+	length = len(data)
+	if isinstance(data, np.ndarray):
+		io.write(struct.pack("<I", length))
+		data.tofile(io)
+	else:
+		flat_data = flatten(data)
+		data_struct = "<I" + (data_struct) * length
+		output = struct.pack(data_struct, length, *flat_data)
+		io.write(output)
+
+
+def write_data(io, data_struct, *args):
+	data_struct = "<" + data_struct
+	packed = struct.pack(data_struct, *args)
+	io.write(packed)
+
+
+def write_null(io, num_bytes):
+	io.write(b"\0" * num_bytes)
+
+
+def write_string(io, string):
+	string_bytes = string.encode("utf-8") + b"\0"
+	length = len(string_bytes)
+	io.write(struct.pack("<I", length))
+	io.write(string_bytes)
+
+
+class UDMesh:
+	def __init__(self, name):
+		self.name = name
+
+		self.materials = {}
+
+		self.tris_material_slot = []
+		self.tris_smoothing_group = []
+		self.vertices = []
+		self.triangles = []
+		self.vertex_normals = []
+		self.uvs = []
+		self.vertex_colors = []  # In 0-255 range
+
+		self.relative_path = None
+		self.hash = ""
+
+	# this may need some work, found some documentation:
+	# Engine/Source/Developer/Rawmesh
+	def write_to_path(self, path):
+		with open(path, "wb") as file:
+			log.debug("writing mesh:" + self.name)
+			# write_null(file, 8)
+			file.write(b"\x01\x00\x00\x00\xfd\x04\x00\x00")
+
+			file_start = file.tell()
+			write_string(file, self.name)
+			# write_null(file, 5)
+			file.write(b"\x00\x01\x00\x00\x00")
+			write_string(file, "SourceModels")
+			write_string(file, "StructProperty")
+			write_null(file, 8)
+
+			write_string(file, "DatasmithMeshSourceModel")
+
+			write_null(file, 25)
+
+			size_loc = file.tell()  # here we have to write the rawmesh size two times
+			write_data(file, "II", 0, 0)  # just some placeholder data, to rewrite at the end
+
+			file.write(b"\x7d\x00\x00\x00\x00\x00\x00\x00")  # 125 and zero
+
+			# here starts rawmesh
+			mesh_start = file.tell()
+			file.write(b"\x01\x00\x00\x00")  # raw mesh version
+			file.write(b"\x00\x00\x00\x00")  # raw mesh lic  version
+
+			# further analysis revealed:
+			# this loops are per triangle
+			write_array_data(file, "I", self.tris_material_slot)
+			write_array_data(file, "I", self.tris_smoothing_group)
+
+			# per vertex
+			write_array_data(file, "fff", self.vertices)  # VertexPositions
+
+			# per vertexloop
+			write_array_data(file, "I", self.triangles)  # WedgeIndices
+
+			write_null(file, 4)  # WedgeTangentX
+			write_null(file, 4)  # WedgeTangentY
+			write_array_data(file, "fff", self.vertex_normals)  # WedgeTangentZ
+
+			num_uvs = len(self.uvs)
+			for idx in range(num_uvs):
+				write_array_data(file, "ff", self.uvs[idx])  # WedgeTexCoords[0]
+
+			num_empty_uvs = 8 - num_uvs
+			write_null(file, 4 * num_empty_uvs)  # WedgeTexCoords[n..7]
+			write_array_data(file, "BBBB", self.vertex_colors)  # WedgeColors
+			# b2 = write_array_data(file, 'BBBB', self.test) # WedgeTexCoords[0]
+
+			# print("old and new are same? {}".format(b1 == b2))
+			# print(b2[4:24])
+			# print(self.vertex_colors.tobytes()[:20])
+			# print(self.vertex_colors[:20])
+			# print(self.test[:20])
+
+			write_null(file, 4)  # MaterialIndexToImportIndex
+
+			# here ends rawmesh
+			mesh_end = file.tell()
+
+			write_null(file, 16)
+			write_null(file, 4)
+			file_end = file.tell()
+
+			mesh_size = mesh_end - mesh_start
+			file.seek(size_loc)
+			write_data(file, "II", mesh_size, mesh_size)
+
+			file.seek(0)
+			write_data(file, "II", 1, file_end - file_start)
+
+	def node(self):
+		n = Node("StaticMesh")
+		n["label"] = self.name
+		n["name"] = self.name
+
+		for idx, m in self.materials.items():
+			n.push(Node("Material", {"id": idx, "name": m}))
+		if self.relative_path:
+			path = self.relative_path.replace("\\", "/")
+			n.push(Node("file", {"path": path}))
+		n.push(Node("LightmapUV", {"value": "-1"}))
+		n.push(Node("Hash", {"value": self.hash}))
+		return n
+
+	def save(self, basedir, folder_name):
+		log.debug("saving mesh:" + self.name)
+		self.relative_path = path.join(folder_name, self.name + ".udsmesh")
+		abs_path = path.join(basedir, self.relative_path)
+		self.write_to_path(abs_path)
+		self.hash = calc_hash(abs_path)
+
+
+def collect_mesh(name, bl_mesh):
+	umesh = UDMesh(name)
+	fill_umesh(umesh, bl_mesh)
+	meshes = datasmith_context["meshes"]
+	meshes[name] = umesh
+	return umesh
 
 
 def fill_umesh(umesh, bl_mesh):
@@ -141,19 +323,6 @@ def fill_umesh(umesh, bl_mesh):
 
 	bpy.data.meshes.remove(m)
 	return umesh
-
-
-def fix_uv(data):
-	return (data[0], 1 - data[1])
-
-
-def color_uchar(data):
-	return (
-		int(data[0] * 255),
-		int(data[1] * 255),
-		int(data[2] * 255),
-		int(data[3] * 255),
-	)
 
 
 def node_transform(mat):
@@ -335,16 +504,12 @@ def collect_object_custom_data(bl_obj, n, apply_modifiers, obj_mat, depsgraph, e
 
 		bl_mesh_name = sanitize_name(bl_mesh_name)
 		meshes = datasmith_context["meshes"]
-		umesh = None
-		for mesh in meshes:
-			if bl_mesh_name == mesh.name:
-				umesh = mesh
+
+		umesh = meshes.get(bl_mesh_name)
 
 		if umesh is None:
 			if len(bl_mesh.polygons) > 0:
-				umesh = UDMesh(bl_mesh_name)
-				meshes.append(umesh)
-				fill_umesh(umesh, bl_mesh)
+				umesh = collect_mesh(bl_mesh_name, bl_mesh)
 
 				if export_metadata:
 					collect_object_metadata(n["name"], "StaticMesh", bl_mesh)
@@ -380,11 +545,8 @@ def collect_object_custom_data(bl_obj, n, apply_modifiers, obj_mat, depsgraph, e
 			bl_curve_name = "%s_%s" % (bl_curve.name, bl_obj.name)
 			bl_curve_name = sanitize_name(bl_curve_name)
 
-			umesh = UDMesh(bl_curve_name)
-			meshes = datasmith_context["meshes"]
-			meshes.append(umesh)
+			umesh = collect_mesh(bl_curve_name, bl_mesh)
 
-			fill_umesh(umesh, bl_mesh)
 			material_list = datasmith_context["materials"]
 
 			n.name = "ActorMesh"
@@ -413,11 +575,8 @@ def collect_object_custom_data(bl_obj, n, apply_modifiers, obj_mat, depsgraph, e
 			bl_data_name = "%s_%s" % (bl_data.name, bl_obj.name)
 			bl_data_name = sanitize_name(bl_data_name)
 
-			umesh = UDMesh(bl_data_name)
-			meshes = datasmith_context["meshes"]
-			meshes.append(umesh)
+			umesh = collect_mesh(bl_data_name, bl_mesh)
 
-			fill_umesh(umesh, bl_mesh)
 			material_list = datasmith_context["materials"]
 
 			n.name = "ActorMesh"
@@ -670,7 +829,7 @@ def collect_environment(world, tex_dict):
 	log.info("found environment, collecting...")
 	image = source_node.image
 
-	tex_name = export_material.get_texture_name(tex_dict, image)
+	tex_name = get_texture_name(tex_dict, image)
 
 	tex_node = Node(
 		"Texture",
@@ -874,13 +1033,10 @@ def get_mesh_name(bl_obj_inst):
 
 	mesh_data["mesh"] = bl_mesh
 
-	meshes = datasmith_context["meshes"]
 	umesh = None
 
 	if bl_mesh:  # and len(bl_mesh.polygons) > 0:
-		umesh = UDMesh(bl_mesh_name)
-		meshes.append(umesh)
-		fill_umesh(umesh, bl_mesh)
+		umesh = collect_mesh(bl_mesh_name, bl_mesh)
 
 		material_list = datasmith_context["materials"]
 		if len(bl_obj.material_slots) == 0:
@@ -1602,7 +1758,7 @@ def collect_and_save(context, args, save_path):
 		"objects": [],
 		"anim_objects": [],
 		"textures": [],
-		"meshes": [],
+		"meshes": {},
 		"meshes_per_original": {},
 		"materials": [],
 		"material_curves": None,
@@ -1663,7 +1819,7 @@ def collect_and_save(context, args, save_path):
 		if not found:
 			unique_materials.append(material)
 
-	material_nodes = export_material.collect_all_materials(unique_materials, all_textures, config_always_twosided)
+	material_nodes = collect_all_materials(unique_materials, all_textures, config_always_twosided)
 
 	log.info("finished collecting, now saving")
 
@@ -1692,7 +1848,7 @@ def collect_and_save(context, args, save_path):
 
 	log.info("writing meshes")
 	num_meshes = 0
-	for mesh in datasmith_context["meshes"]:
+	for mesh in datasmith_context["meshes"].values():
 		mesh.save(basedir, folder_name)
 		num_meshes += 1
 	summary["Num meshes"] = num_meshes
@@ -1726,7 +1882,7 @@ def collect_and_save(context, args, save_path):
 		for env in environment:
 			n.push(env)
 
-	for mesh in datasmith_context["meshes"]:
+	for mesh in datasmith_context["meshes"].values():
 		n.push(mesh.node())
 	for mat in material_nodes:
 		n.push(mat)

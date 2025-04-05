@@ -57,6 +57,9 @@ def get_texture_name(img_dict, in_image, type_hint="SRGB"):
 	return name
 
 
+# From here, everything is "private"
+
+
 def collect_pbr_material(mat_with_owner, config_always_twosided):
 	global reported_errors
 	global reported_warns
