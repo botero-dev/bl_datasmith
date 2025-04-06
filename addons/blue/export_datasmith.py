@@ -12,7 +12,6 @@ from hashlib import sha1
 from os import path
 
 import bpy
-import idprop
 import bmesh
 from mathutils import Matrix
 
@@ -51,37 +50,10 @@ matrix_forward = Matrix(
 log = logging.getLogger("bl_datasmith")
 
 
-def read_array_data(io, data_struct):
-	struct_size = struct.calcsize(data_struct)
-	data_struct = "<" + data_struct  # force little endianness
-
-	count = struct.unpack("<I", io.read(4))[0]
-	data = io.read(count * struct_size)
-	unpacked_data = list(struct.iter_unpack(data_struct, data))
-	return [tup[0] if len(tup) == 1 else tup for tup in unpacked_data]
-
-
-def flatten(it):
-	data = []
-	for d in it:
-		if isinstance(d, float) or isinstance(d, int):
-			data.append(d)
-		else:
-			data += [*d]
-	return data
-
-
-def write_array_data(io, data_struct, data):
-	# first get data length
-	length = len(data)
-	if isinstance(data, np.ndarray):
-		io.write(struct.pack("<I", length))
-		data.tofile(io)
-	else:
-		flat_data = flatten(data)
-		data_struct = "<I" + (data_struct) * length
-		output = struct.pack(data_struct, length, *flat_data)
-		io.write(output)
+def write_array_data(io, data):
+	assert isinstance(data, np.ndarray)
+	io.write(struct.pack("<I", len(data)))
+	data.tofile(io)
 
 
 def write_data(io, data_struct, *args):
@@ -101,130 +73,111 @@ def write_string(io, string):
 	io.write(string_bytes)
 
 
-class UDMesh:
-	def __init__(self, name):
-		self.name = name
+def mesh_save(mesh, basedir, folder_name):
+	mesh_name, materials, data = mesh
+	log.debug("saving mesh:" + mesh_name)
 
-		self.materials = {}
+	relative_path = path.join(folder_name, mesh_name + ".udsmesh")
+	abs_path = path.join(basedir, relative_path)
+	with open(abs_path, "wb") as file:
+		write_to_path(mesh_name, data, file)
+	mesh_hash = calc_hash(abs_path)
 
-		self.tris_material_slot = []
-		self.tris_smoothing_group = []
-		self.vertices = []
-		self.triangles = []
-		self.vertex_normals = []
-		self.uvs = []
-		self.vertex_colors = []  # In 0-255 range
+	n = Node("StaticMesh")
+	name, materials, _ = mesh
 
-		self.relative_path = None
-		self.hash = ""
+	n["label"] = name
+	n["name"] = name
 
-	# this may need some work, found some documentation:
-	# Engine/Source/Developer/Rawmesh
-	def write_to_path(self, path):
-		with open(path, "wb") as file:
-			log.debug("writing mesh:" + self.name)
-			# write_null(file, 8)
-			file.write(b"\x01\x00\x00\x00\xfd\x04\x00\x00")
+	for idx, m in enumerate(materials):
+		n.push(Node("Material", {"id": idx, "name": m}))
+	fixed_path = relative_path.replace("\\", "/")
+	n.push(Node("file", {"path": fixed_path}))
+	n.push(Node("LightmapUV", {"value": "-1"}))
+	n.push(Node("Hash", {"value": mesh_hash}))
+	return n
 
-			file_start = file.tell()
-			write_string(file, self.name)
-			# write_null(file, 5)
-			file.write(b"\x00\x01\x00\x00\x00")
-			write_string(file, "SourceModels")
-			write_string(file, "StructProperty")
-			write_null(file, 8)
 
-			write_string(file, "DatasmithMeshSourceModel")
+# check UE Engine/Source/Developer/Rawmesh for data structure
+def write_to_path(name, data, file):
+	file.write(b"\x01\x00\x00\x00\xfd\x04\x00\x00")
 
-			write_null(file, 25)
+	file_start = file.tell()
+	write_string(file, name)
+	file.write(b"\x00\x01\x00\x00\x00")
+	write_string(file, "SourceModels")
+	write_string(file, "StructProperty")
+	write_null(file, 8)
 
-			size_loc = file.tell()  # here we have to write the rawmesh size two times
-			write_data(file, "II", 0, 0)  # just some placeholder data, to rewrite at the end
+	write_string(file, "DatasmithMeshSourceModel")
 
-			file.write(b"\x7d\x00\x00\x00\x00\x00\x00\x00")  # 125 and zero
+	write_null(file, 25)
 
-			# here starts rawmesh
-			mesh_start = file.tell()
-			file.write(b"\x01\x00\x00\x00")  # raw mesh version
-			file.write(b"\x00\x00\x00\x00")  # raw mesh lic  version
+	size_loc = file.tell()  # here we have to write the rawmesh size two times
+	write_data(file, "II", 0, 0)  # just some placeholder data, to rewrite at the end
 
-			# further analysis revealed:
-			# this loops are per triangle
-			write_array_data(file, "I", self.tris_material_slot)
-			write_array_data(file, "I", self.tris_smoothing_group)
+	file.write(b"\x7d\x00\x00\x00\x00\x00\x00\x00")  # 125 and zero
 
-			# per vertex
-			write_array_data(file, "fff", self.vertices)  # VertexPositions
+	# here starts rawmesh
+	mesh_start = file.tell()
+	file.write(b"\x01\x00\x00\x00")  # raw mesh version
+	file.write(b"\x00\x00\x00\x00")  # raw mesh lic  version
 
-			# per vertexloop
-			write_array_data(file, "I", self.triangles)  # WedgeIndices
+	material_slots, smoothing_groups, positions, indices, out_normals, uvs, out_vertex_colors = data
 
-			write_null(file, 4)  # WedgeTangentX
-			write_null(file, 4)  # WedgeTangentY
-			write_array_data(file, "fff", self.vertex_normals)  # WedgeTangentZ
+	# these loops are per triangle
+	write_array_data(file, material_slots)
+	write_array_data(file, smoothing_groups)
 
-			num_uvs = len(self.uvs)
-			for idx in range(num_uvs):
-				write_array_data(file, "ff", self.uvs[idx])  # WedgeTexCoords[0]
+	# per vertex
+	write_array_data(file, positions)  # VertexPositions
 
-			num_empty_uvs = 8 - num_uvs
-			write_null(file, 4 * num_empty_uvs)  # WedgeTexCoords[n..7]
-			write_array_data(file, "BBBB", self.vertex_colors)  # WedgeColors
-			# b2 = write_array_data(file, 'BBBB', self.test) # WedgeTexCoords[0]
+	# per vertexloop
+	write_array_data(file, indices)  # WedgeIndices
 
-			# print("old and new are same? {}".format(b1 == b2))
-			# print(b2[4:24])
-			# print(self.vertex_colors.tobytes()[:20])
-			# print(self.vertex_colors[:20])
-			# print(self.test[:20])
+	write_null(file, 4)  # WedgeTangentX
+	write_null(file, 4)  # WedgeTangentY
+	write_array_data(file, out_normals)  # WedgeTangentZ
 
-			write_null(file, 4)  # MaterialIndexToImportIndex
+	num_uvs = len(uvs)
+	for idx in range(num_uvs):
+		write_array_data(file, uvs[idx])  # WedgeTexCoords[0]
 
-			# here ends rawmesh
-			mesh_end = file.tell()
+	num_empty_uvs = 8 - num_uvs
+	write_null(file, 4 * num_empty_uvs)  # WedgeTexCoords[n..7]
+	write_array_data(file, out_vertex_colors)  # WedgeColors
 
-			write_null(file, 16)
-			write_null(file, 4)
-			file_end = file.tell()
+	write_null(file, 4)  # MaterialIndexToImportIndex
 
-			mesh_size = mesh_end - mesh_start
-			file.seek(size_loc)
-			write_data(file, "II", mesh_size, mesh_size)
+	# here ends rawmesh
+	mesh_end = file.tell()
 
-			file.seek(0)
-			write_data(file, "II", 1, file_end - file_start)
+	write_null(file, 16)
+	write_null(file, 4)
+	file_end = file.tell()
 
-	def node(self):
-		n = Node("StaticMesh")
-		n["label"] = self.name
-		n["name"] = self.name
+	mesh_size = mesh_end - mesh_start
+	file.seek(size_loc)
+	write_data(file, "II", mesh_size, mesh_size)
 
-		for idx, m in self.materials.items():
-			n.push(Node("Material", {"id": idx, "name": m}))
-		if self.relative_path:
-			path = self.relative_path.replace("\\", "/")
-			n.push(Node("file", {"path": path}))
-		n.push(Node("LightmapUV", {"value": "-1"}))
-		n.push(Node("Hash", {"value": self.hash}))
-		return n
-
-	def save(self, basedir, folder_name):
-		log.debug("saving mesh:" + self.name)
-		self.relative_path = path.join(folder_name, self.name + ".udsmesh")
-		abs_path = path.join(basedir, self.relative_path)
-		self.write_to_path(abs_path)
-		self.hash = calc_hash(abs_path)
+	file.seek(0)
+	write_data(file, "II", 1, file_end - file_start)
 
 
 def collect_mesh(name, bl_mesh):
-	umesh = UDMesh(name)
-	fill_umesh(umesh, bl_mesh)
+	materials = None
+	if len(bl_mesh.materials) == 0:
+		materials = ["DefaultMaterial"]
+	else:
+		materials = [sanitize_name(mat.name) if mat else "DefaultMaterial" for mat in bl_mesh.materials]
+
+	mesh_data = make_mesh_data(bl_mesh)
+
 	meshes = datasmith_context["meshes"]
-	meshes[name] = umesh
-	return umesh
+	meshes[name] = (name, materials, mesh_data)
 
 
-def fill_umesh(umesh, bl_mesh):
+def make_mesh_data(bl_mesh):
 	# create copy to triangulate
 	m = bl_mesh.copy()
 
@@ -249,7 +202,7 @@ def fill_umesh(umesh, bl_mesh):
 	vertices_array = np.empty(num_vertices * 3, np.float32)
 	vertices.foreach_get("co", vertices_array)
 
-	umesh.vertices = vertices_array.reshape(-1, 3)
+	positions = vertices_array.reshape(-1, 3)
 
 	# not sure if this is the best way to read normals
 	m.calc_loop_triangles()
@@ -257,13 +210,11 @@ def fill_umesh(umesh, bl_mesh):
 	num_triangles = len(loop_triangles)
 	num_loops = num_triangles * 3
 
-	triangles = np.empty(num_loops, np.uint32)
-	loop_triangles.foreach_get("vertices", triangles)
-	umesh.triangles = triangles
+	indices = np.empty(num_loops, np.uint32)
+	loop_triangles.foreach_get("vertices", indices)
 
 	material_slots = np.empty(num_triangles, np.uint32)
 	loop_triangles.foreach_get("material_index", material_slots)
-	umesh.tris_material_slot = material_slots
 
 	normals = np.empty(num_loops * 3, np.float32)
 	loop_triangles.foreach_get("split_normals", normals)
@@ -275,20 +226,12 @@ def fill_umesh(umesh, bl_mesh):
 	normals_drift = np.linalg.norm(normals, axis=1) - 1
 	normals_faulty = np.abs(normals_drift) > 0.008
 	normals[normals_faulty] = (0, 0, 1)
-
-	umesh.vertex_normals = np.ascontiguousarray(normals, "<f4")
+	out_normals = np.ascontiguousarray(normals, "<f4")
 
 	# finish inline mesh_copy_triangulate
-	if len(bl_mesh.materials) == 0:
-		umesh.materials[0] = "DefaultMaterial"
-	else:
-		for idx, mat in enumerate(bl_mesh.materials):
-			material_name = getattr(mat, "name", "DefaultMaterial")
-			umesh.materials[idx] = sanitize_name(material_name)
-
-	smoothing_groups = m.calc_smooth_groups()[0]
-	umesh.tris_smoothing_group = np.array(smoothing_groups, np.uint32)
-	umesh.tris_smoothing_group = np.zeros(num_triangles, np.uint32)
+	# smoothing_groups = m.calc_smooth_groups()[0]
+	# smoothing_groups = np.array(smoothing_groups, np.uint32)
+	smoothing_groups = np.zeros(num_triangles, np.uint32)
 
 	uvs = []
 	num_uvs = min(8, len(m.uv_layers))
@@ -311,420 +254,20 @@ def fill_umesh(umesh, bl_mesh):
 		uv_channel = uv_loops
 		uv_channel[:, 1] = 1 - uv_channel[:, 1]
 		uvs.append(uv_channel)
-	umesh.uvs = uvs
 
+	out_vertex_colors = None
 	if m.vertex_colors:
 		vertex_colors = np.empty(num_loops * 4)
 		m.vertex_colors[0].data.foreach_get("color", vertex_colors)
 		vertex_colors *= 255
 		vertex_colors = vertex_colors.reshape((-1, 4))
 		vertex_colors[:, [0, 2]] = vertex_colors[:, [2, 0]]
-		umesh.vertex_colors = vertex_colors.astype(np.uint8)
-
-	bpy.data.meshes.remove(m)
-	return umesh
-
-
-def node_transform(mat):
-	loc, rot, scale = mat.decompose()
-	n = Node("Transform")
-	n["tx"] = f(loc.x)
-	n["ty"] = f(loc.y)
-	n["tz"] = f(loc.z)
-	n["qw"] = f(rot.w)
-	n["qx"] = f(rot.x)
-	n["qy"] = f(rot.y)
-	n["qz"] = f(rot.z)
-	n["sx"] = f(scale.x)
-	n["sy"] = f(scale.y)
-	n["sz"] = f(scale.z)
-	return n
-
-
-def transform_to_xml(mat):
-	loc, rot, scale = mat.decompose()
-	parts = [
-		'\t<Transform tx="',
-		f(loc.x),
-		'" ty="',
-		f(loc.y),
-		'" tz="',
-		f(loc.z),
-		'" qw="',
-		f(rot.w),
-		'" qx="',
-		f(rot.x),
-		'" qy="',
-		f(rot.y),
-		'" qz="',
-		f(rot.z),
-		'" sx="',
-		f(scale.x),
-		'" sy="',
-		f(scale.y),
-		'" sz="',
-		f(scale.z),
-		'"/>\n',
-	]
-	return "".join(parts)
-
-
-def collect_object(
-	bl_obj,
-	name_override=None,
-	instance_matrix=None,
-	selected_only=False,
-	apply_modifiers=False,
-	export_animations=False,
-	export_metadata=False,
-):
-	n = Node("Actor")
-
-	n["name"] = sanitize_name(bl_obj.name)
-	if name_override:
-		n["name"] = name_override
-	log.debug("reading object:%s" % bl_obj.name)
-
-	n["layer"] = bl_obj.users_collection[0].name_full
-
-	child_nodes = []
-
-	for child in bl_obj.children:
-		new_obj = collect_object(
-			child,
-			selected_only=selected_only,
-			apply_modifiers=apply_modifiers,
-			export_animations=export_animations,
-			export_metadata=export_metadata,
-		)
-		if new_obj:
-			child_nodes.append(new_obj)
-
-	# if we are exporting only selected items, we should only continue
-	# if this is selected, or if there is any child that needs this
-	# object to be placed in hierarchy
-	# TODO: collections don't work this way, investigate (export chair from classroom)
-	export_empty_because_unselected = False
-	if selected_only:
-		is_selected = bl_obj in bpy.context.selected_objects
-		if selected_only and not is_selected:
-			if len(child_nodes) == 0:
-				# We skip this object as it is not selected, and has no children selected
-				return None
-			else:
-				# we aren't selected, but we have selected children, so create minimal object
-				export_empty_because_unselected = True
-
-	# from here, we're absolutely sure that this object should be exported
-
-	obj_mat = collect_object_transform(bl_obj, instance_matrix)
-	transform = node_transform(obj_mat)
-
-	# if an object is not selected but is in hierarchy, we don't write data for it
-	if not export_empty_because_unselected:
-		# TODO: use instanced static meshes
-		depsgraph = datasmith_context["depsgraph"]
-
-		if bl_obj.is_instancer:
-			dup_idx = 0
-			for dup in depsgraph.object_instances:
-				if dup.parent and dup.parent.original == bl_obj:
-					dup_name = "%s_%s" % (dup.instance_object.original.name, dup_idx)
-					dup_name = sanitize_name(dup_name)
-					new_obj = collect_object(
-						dup.instance_object.original,
-						instance_matrix=dup.matrix_world.copy(),
-						name_override=dup_name,
-						selected_only=False,  # if is instancer, maybe all child want to be instanced
-						apply_modifiers=False,  # if is instancer, applying modifiers may end in a lot of meshes
-						export_animations=False,  # TODO: test how would animation work mixed with instancing
-						export_metadata=False,
-					)
-					child_nodes.append(new_obj)
-					# dups.append((dup.instance_object.original, dup.matrix_world.copy()))
-					dup_idx += 1
-
-		collect_object_custom_data(bl_obj, n, apply_modifiers, obj_mat, depsgraph, export_metadata)
-
-	# todo: maybe make some assumptions? like if obj is probe or reflection, don't add to animated objects list
-
-	if export_animations:
-		datasmith_context["anim_objects"].append((bl_obj, n["name"], obj_mat))
-
-	if export_metadata:
-		collect_object_metadata(n["name"], "Actor", bl_obj)
-
-	# just to make children appear last
-	n.push(transform)
-
-	if len(child_nodes) > 0:
-		children_node = Node("children")
-		# strange, this visibility flag is read from the "children" node. . .
-		children_node["visible"] = not bl_obj.hide_render
-		for child in child_nodes:
-			if child:
-				children_node.push(child)
-		n.push(children_node)
-
-	return n
-
-
-def collect_object_custom_data(bl_obj, n, apply_modifiers, obj_mat, depsgraph, export_metadata=False):
-	# I think that these should be ordered by how common they are
-	if bl_obj.type == "EMPTY":
-		pass
-	elif bl_obj.type == "MESH":
-		bl_mesh = bl_obj.data
-		bl_mesh_name = bl_mesh.name
-
-		if bl_obj.modifiers and apply_modifiers:
-			bl_mesh = bl_obj.evaluated_get(depsgraph).to_mesh()
-			bl_mesh_name = "%s__%s" % (bl_obj.name, bl_mesh.name)
-
-		if bl_mesh.library:
-			libraries_dict = datasmith_context["libraries"]
-			prefix = libraries_dict.get(bl_mesh.library)
-
-			if prefix is None:
-				lib_filename = bpy.path.basename(bl_mesh.library.filepath)
-				lib_clean_name = bpy.path.clean_name(lib_filename)
-				prefix = lib_clean_name.strip("_")
-				if prefix.endswith("_blend"):
-					prefix = prefix[:-5]  # leave the underscore
-				next_prefix = prefix
-				try_count = 1
-				libraries_prefixes = libraries_dict.values()
-				# just to reaaally make sure there are no collisions
-				while next_prefix in libraries_prefixes:
-					next_prefix = "%s%d_" % (prefix, try_count)
-					try_count += 1
-				prefix = next_prefix
-				libraries_dict[bl_mesh.library] = prefix
-			bl_mesh_name = prefix + bl_mesh_name
-
-		bl_mesh_name = sanitize_name(bl_mesh_name)
-		meshes = datasmith_context["meshes"]
-
-		umesh = meshes.get(bl_mesh_name)
-
-		if umesh is None:
-			if len(bl_mesh.polygons) > 0:
-				umesh = collect_mesh(bl_mesh_name, bl_mesh)
-
-				if export_metadata:
-					collect_object_metadata(n["name"], "StaticMesh", bl_mesh)
-
-				material_list = datasmith_context["materials"]
-				if len(bl_obj.material_slots) == 0:
-					material_list.append((None, bl_obj))
-				else:
-					for slot in bl_obj.material_slots:
-						material_list.append((slot.material, bl_obj))
-
-		if umesh:
-			n.name = "ActorMesh"
-			mesh_name = umesh.name
-			log.error("collecting mesh: %s" % mesh_name)
-			n.push(Node("mesh", {"name": mesh_name}))
-
-			for idx, slot in enumerate(bl_obj.material_slots):
-				if slot.link == "OBJECT":
-					material_list.append((slot.material, bl_obj))
-					safe_name = sanitize_name(slot.material.name)
-					n.push(Node("material", {"id": idx, "name": safe_name}))
-
-	elif bl_obj.type == "CURVE":
-		# as we cannot get geometry before evaluating depsgraph,
-		# we better evaluate first, and check if it has polygons.
-		# this might end with repeated geometry, gotta find solution.
-		# maybe cache "evaluated curve without modifiers"?
-
-		bl_mesh = bl_obj.evaluated_get(depsgraph).to_mesh()
-		if bl_mesh and len(bl_mesh.polygons) > 0:
-			bl_curve = bl_obj.data
-			bl_curve_name = "%s_%s" % (bl_curve.name, bl_obj.name)
-			bl_curve_name = sanitize_name(bl_curve_name)
-
-			umesh = collect_mesh(bl_curve_name, bl_mesh)
-
-			material_list = datasmith_context["materials"]
-
-			n.name = "ActorMesh"
-			n.push(Node("mesh", {"name": umesh.name}))
-
-			if len(bl_obj.material_slots) == 0:
-				material_list.append((None, bl_obj))
-			else:
-				for idx, slot in enumerate(bl_obj.material_slots):
-					material_list.append((slot.material, bl_obj))
-					if slot.link == "OBJECT":
-						safe_name = sanitize_name(slot.material.name)
-						n.push(Node("material", {"id": idx, "name": safe_name}))
-
-	elif bl_obj.type == "FONT":
-		# we could get bl_obj.to_mesh(), but if we do it that way, we
-		# won't get the modifiers applied, maybe we can cache the mesh
-		# to reuse it if there are no modifiers?
-		if apply_modifiers:
-			bl_mesh = bl_obj.evaluated_get(depsgraph).to_mesh()
-		else:
-			bl_mesh = bl_obj.to_mesh()
-
-		if bl_mesh and len(bl_mesh.polygons) > 0:
-			bl_data = bl_obj.data
-			bl_data_name = "%s_%s" % (bl_data.name, bl_obj.name)
-			bl_data_name = sanitize_name(bl_data_name)
-
-			umesh = collect_mesh(bl_data_name, bl_mesh)
-
-			material_list = datasmith_context["materials"]
-
-			n.name = "ActorMesh"
-			n.push(Node("mesh", {"name": umesh.name}))
-
-			if len(bl_obj.material_slots) == 0:
-				material_list.append((None, bl_obj))
-			else:
-				for idx, slot in enumerate(bl_obj.material_slots):
-					material_list.append((slot.material, bl_obj))
-					if slot.link == "OBJECT":
-						safe_name = sanitize_name(slot.material.name)
-						n.push(Node("material", {"id": idx, "name": safe_name}))
-
-	elif bl_obj.type == "CAMERA":
-		bl_cam = bl_obj.data
-		n.name = "Camera"
-
-		# TODO
-		# look_at_actor = sanitize_name(bl_cam.dof.focus_object.name)
-
-		use_dof = "1" if bl_cam.dof.use_dof else "0"
-		n.push(Node("DepthOfField", {"enabled": use_dof}))
-		n.push(node_value("SensorWidth", bl_cam.sensor_width))
-		# blender doesn't have per-camera aspect ratio
-		sensor_aspect_ratio = 1.777778
-		n.push(node_value("SensorAspectRatio", sensor_aspect_ratio))
-		n.push(node_value("FocusDistance", bl_cam.dof.focus_distance * 100))  # to centimeters
-		n.push(node_value("FStop", bl_cam.dof.aperture_fstop))
-		n.push(node_value("FocalLength", bl_cam.lens))
-		n.push(Node("Post"))
-	# maybe move up as lights are more common?
-	elif bl_obj.type == "LIGHT":
-		bl_light = bl_obj.data
-		n.name = "Light"
-
-		n["type"] = "PointLight"
-		n["enabled"] = "1"
-		n.push(node_value("SourceSize", bl_light.shadow_soft_size * 100))
-		light_intensity = bl_light.energy
-		light_attenuation_radius = 100 * math.sqrt(bl_light.energy)
-		light_color = bl_light.color
-		light_intensity_units = "Lumens"  # can also be 'Candelas' or 'Unitless'
-		light_use_custom_distance = bl_light.use_custom_distance
-
-		if bl_light.type == "SUN":
-			n["type"] = "DirectionalLight"
-			light_use_custom_distance = False
-			# light_intensity = bl_light.energy # suns are in lux
-
-		elif bl_light.type == "SPOT":
-			n["type"] = "SpotLight"
-			outer_cone_angle = bl_light.spot_size * 180 / (2 * math.pi)
-			inner_cone_angle = outer_cone_angle * (1 - bl_light.spot_blend)
-			if inner_cone_angle < 0.0001:
-				inner_cone_angle = 0.0001
-			n.push(node_value("InnerConeAngle", inner_cone_angle))
-			n.push(node_value("OuterConeAngle", outer_cone_angle))
-
-			spot_use_candelas = False  # TODO: test this thoroughly
-			if spot_use_candelas:
-				light_intensity_units = "Candelas"
-				light_intensity = bl_light.energy * 0.08  # came up with this constant by brute force
-				# blender watts unit match ue4 lumens unit, but in spot lights the brightness
-				# changes with the spot angle when using lumens while candelas do not.
-
-		elif bl_light.type == "AREA":
-			n["type"] = "AreaLight"
-
-			size_w = size_h = bl_light.size
-			if bl_light.shape == "RECTANGLE" or bl_light.shape == "ELLIPSE":
-				size_h = bl_light.size_y
-
-			n.push(
-				Node(
-					"Shape",
-					{
-						"type": "None",  # can be Rectangle, Disc, Sphere, Cylinder, None
-						"width": size_w * 100,  # convert to cm
-						"length": size_h * 100,
-						"LightType": "Rect",  # can be "Point", "Spot", "Rect"
-					},
-				)
-			)
-		if light_use_custom_distance:
-			light_attenuation_radius = 100 * bl_light.cutoff_distance
-		# TODO: check how lights work when using a node tree
-		# if bl_light.use_nodes and bl_light.node_tree:
-
-		# 	node = bl_light.node_tree.nodes['Emission']
-		# 	light_color = node.inputs['Color'].default_value
-		# 	light_intensity = node.inputs['Strength'].default_value # have to check how to relate to candelas
-		# 	log.error("unsupported: using nodetree for light " + bl_obj.name)
-
-		n.push(node_value("Intensity", light_intensity))
-		n.push(node_value("AttenuationRadius", light_attenuation_radius))
-		n.push(Node("IntensityUnits", {"value": light_intensity_units}))
-		n.push(
-			Node(
-				"Color",
-				{
-					"usetemp": "0",
-					"temperature": "6500.0",
-					"R": f(light_color[0]),
-					"G": f(light_color[1]),
-					"B": f(light_color[2]),
-				},
-			)
-		)
-	elif bl_obj.type == "LIGHT_PROBE":
-		# TODO: LIGHT PROBE
-		n.name = "CustomActor"
-		bl_probe = bl_obj.data
-		if bl_probe.type == "PLANAR":
-			n["PathName"] = "/DatasmithBlenderContent/Blueprints/BP_BlenderPlanarReflection"
-
-		elif bl_probe.type == "CUBEMAP":
-			## we could also try using min/max if it makes a difference
-			_, _, obj_scale = obj_mat.decompose()
-			avg_scale = (obj_scale.x + obj_scale.y + obj_scale.z) * 0.333333
-
-			if bl_probe.influence_type == "BOX":
-				n["PathName"] = "/DatasmithBlenderContent/Blueprints/BP_BlenderBoxReflection"
-
-				falloff = bl_probe.falloff  # this value is 0..1
-				transition_distance = falloff * avg_scale
-				prop = Node("KeyValueProperty", {"name": "TransitionDistance", "type": "Float", "val": "%.6f" % transition_distance})
-				n.push(prop)
-			else:  # if bl_probe.influence_type == 'ELIPSOID'
-				n["PathName"] = "/DatasmithBlenderContent/Blueprints/BP_BlenderSphereReflection"
-				probe_radius = bl_probe.influence_distance * 100 * avg_scale
-				radius = Node("KeyValueProperty", {"name": "Radius", "type": "Float", "val": "%.6f" % probe_radius})
-				n.push(radius)
-		elif bl_probe.type == "GRID":
-			# for now we just export to custom object, but it doesn't affect the render on
-			# the unreal side. would be cool if it made a difference by setting volumetric importance volume
-			n["PathName"] = "/DatasmithBlenderContent/Blueprints/BP_BlenderGridProbe"
-
-			# blender influence_distance is outwards, maybe we should grow the object to match?
-			# outward_influence would be 1.0 + influence_distance / size maybe?
-			# obj_mat = obj_mat @ Matrix.Scale(outward_influence, 4)
-
-		else:
-			log.error("unhandled light probe")
-	elif bl_obj.type == "ARMATURE":
-		pass
+		out_vertex_colors = vertex_colors.astype(np.uint8)
 	else:
-		log.error("unrecognized object type: %s" % bl_obj.type)
+		out_vertex_colors = np.zeros(0)
+	bpy.data.meshes.remove(m)
+
+	return (material_slots, smoothing_groups, positions, indices, out_normals, uvs, out_vertex_colors)
 
 
 def collect_object_transform(bl_obj, instance_matrix=None):
@@ -744,64 +287,6 @@ def collect_object_transform(bl_obj, instance_matrix=None):
 
 	obj_mat.freeze()  # TODO: check if this is needed
 	return obj_mat
-
-
-def collect_object_metadata(obj_name, obj_type, obj):
-	metadata = None
-	found_metadata = False
-	obj_props = obj.keys()
-	for prop_name in obj_props:
-		if prop_name in {"_RNA_UI", "cycles", "cycles_visibility"}:
-			continue
-		if prop_name.startswith("archipack_"):
-			continue
-		if metadata is None:
-			names = (obj_type, obj_name)
-			metadata = Node("MetaData", {"name": "%s_%s" % names, "reference": "%s.%s" % names})
-
-		out_value = prop_value = obj[prop_name]
-		prop_type = type(prop_value)
-		out_type = None
-		if prop_type is str:
-			out_type = "String"
-		elif prop_type in {float, int}:
-			out_type = "Float"
-			out_value = f(prop_value)
-		elif prop_type is idprop.types.IDPropertyArray:
-			out_type = "Vector"
-			out_value = ",".join(f(v) for v in prop_value)
-		elif prop_type is idprop.types.IDPropertyGroup:
-			if len(out_value) == 0:
-				continue
-			out_type = "String"
-			out_value = str(prop_value.to_dict())
-		# elif prop_type is list:
-		# archipack uses some list props, I don't think these are useful
-		# but we should check if there's something specific we should do.
-		else:
-			log.error("%s: %s has unsupported metadata with type:%s" % (obj_type, obj_name, prop_type))
-			# write as string, and sanitize output
-			out_type = "String"
-			out_value = str(out_value)
-
-		if out_type == "String":
-			out_value = out_value.replace("<", "&lt;")
-			out_value = out_value.replace(">", "&gt;")
-			out_value = out_value.replace('"', "&quot;")
-
-		kvp = Node("KeyValueProperty", {"name": prop_name, "val": out_value, "type": out_type})
-		metadata.push(kvp)
-		found_metadata = True
-	if found_metadata:
-		datasmith_context["metadata"].append(metadata)
-
-
-def node_value(name, value):
-	return Node(name, {"value": "%f" % value})
-
-
-def f(value):
-	return "%f" % value
 
 
 def collect_environment(world, tex_dict):
@@ -831,12 +316,7 @@ def collect_environment(world, tex_dict):
 
 	tex_name = get_texture_name(tex_dict, image)
 
-	tex_node = Node(
-		"Texture",
-		{
-			"tex": tex_name,
-		},
-	)
+	tex_node = Node("Texture", {"tex": tex_name})
 
 	n2 = Node(
 		"Environment",
@@ -889,15 +369,7 @@ def get_file_header():
 	os_name = "%s %s" % (platform.system(), platform.release())
 	user_name = os.getlogin()
 
-	n.push(
-		Node(
-			"User",
-			{
-				"ID": user_name,
-				"OS": os_name,
-			},
-		)
-	)
+	n.push(Node("User", {"ID": user_name, "OS": os_name}))
 	return n
 
 
@@ -911,7 +383,7 @@ TEXTURE_MODE_BUMP = "6"  # this converts textures to normal maps automatically
 
 
 # saves image, and generates node with image description to add to export
-def save_texture(texture, basedir, folder_name, skip_textures=False, use_gamma_hack=False):
+def save_texture(texture, basedir, folder_name, skip_textures):
 	name, image, img_type = texture
 
 	log.info("writing texture:" + name)
@@ -962,8 +434,6 @@ def save_texture(texture, basedir, folder_name, skip_textures=False, use_gamma_h
 	elif image.colorspace_settings.is_data:
 		n["texturemode"] = TEXTURE_MODE_SPECULAR
 		n["srgb"] = "2"  # only read on 4.25 onwards, but we can still write it
-		if use_gamma_hack:
-			n["rgbcurve"] = "0.454545"
 
 	n["texturefilter"] = "3"
 	if valid_image:
@@ -1009,45 +479,35 @@ def get_mesh_name(bl_obj_inst):
 	bl_mesh_name = sanitize_name(bl_mesh_name)
 
 	# if the mesh has been processed already, return the name
-	# if the mesh was processed, but its result was none, is because
-	# it didn't have geometry, so we convert that to simple actor
+	# when we return none, the outer scope will just not make it a MeshActor
 	meshes_per_original = datasmith_context["meshes_per_original"]
-	if bl_mesh_name in meshes_per_original:
-		if meshes_per_original[bl_mesh_name] is None:
+	MESH_STATUS_CREATED = 1
+	MESH_STATUS_DOESNT_EXIST = 2
+	match meshes_per_original.get(bl_mesh_name):
+		case 1:
+			return bl_mesh_name
+		case 2:
 			return None
-		return bl_mesh_name
 
-	# if we find that the mesh has no geometry, just pass null and store null
 	bl_mesh = bl_obj_inst.to_mesh()
-	has_geometry = bl_mesh and len(bl_mesh.polygons) > 0
-	if not has_geometry:
-		# we use null name as a way to mean no geometry
-		meshes_per_original[bl_mesh_name] = None
+	if not bl_mesh or len(bl_mesh.polygons) == 0:
+		meshes_per_original[bl_mesh_name] = MESH_STATUS_DOESNT_EXIST
 		bl_obj_inst.to_mesh_clear()
 		return None
 
+	meshes_per_original[bl_mesh_name] = MESH_STATUS_CREATED
 	log.info("creating mesh:%s" % bl_mesh_name)
 
-	mesh_data = meshes_per_original[bl_mesh_name] = {}
-	mesh_data["name"] = bl_mesh_name
+	collect_mesh(bl_mesh_name, bl_mesh)
 
-	mesh_data["mesh"] = bl_mesh
-
-	umesh = None
-
-	if bl_mesh:  # and len(bl_mesh.polygons) > 0:
-		umesh = collect_mesh(bl_mesh_name, bl_mesh)
-
-		material_list = datasmith_context["materials"]
-		if len(bl_obj.material_slots) == 0:
-			material_list.append((None, bl_obj))
-		else:
-			for slot in bl_obj.material_slots:
-				material_list.append((slot.material, bl_obj))
+	material_list = datasmith_context["materials"]
+	if len(bl_obj.material_slots) == 0:
+		material_list.append((None, bl_obj))
+	else:
+		for slot in bl_obj.material_slots:
+			material_list.append((slot.material, bl_obj))
 	bl_obj_inst.to_mesh_clear()
 
-	if umesh:
-		mesh_data["umesh"] = umesh
 	return bl_mesh_name
 
 
@@ -1254,8 +714,8 @@ def collect_object_transform2(bl_obj, instance_mat=None):
 				size = bl_probe.influence_distance * 100
 				obj_mat = obj_mat @ Matrix.Scale(size, 4)
 
-	result = transform_to_xml(obj_mat)
-	return result
+	loc, rot, scale = obj_mat.decompose()
+	return '\t<Transform tx="%f" ty="%f" tz="%f" qw="%f" qx="%f" qy="%f" qz="%f" sx="%f" sy="%f" sz="%f"/>\n' % (loc.x, loc.y, loc.z, rot.w, rot.x, rot.y, rot.z, scale.x, scale.y, scale.z)
 
 
 # ensures that `objects` has an entry for `_object` and ensures that
@@ -1282,10 +742,8 @@ def get_object_data(objects, _object, top_level_objs, object_name=None, instance
 			objects[object_name] = object_data
 
 		parent = instance_parent or _object.parent
-
 		if parent:
 			parent_data = get_object_data(objects, parent, top_level_objs)
-
 			parent_data["children"].append(object_data)
 		else:  # is top level object
 			log.info("TOP LEVEL OBJ:%s" % object_data["name"])
@@ -1311,6 +769,9 @@ def create_object(obj):
 	return object_data
 
 
+CONVERTIBLE_TO_MESH = ("MESH", "CURVE", "FONT")
+
+
 # for now let's try writing the xml directly
 def collect_depsgraph(output, use_instanced_meshes, selected_only):
 	d = bpy.context.evaluated_depsgraph_get()
@@ -1328,8 +789,7 @@ def collect_depsgraph(output, use_instanced_meshes, selected_only):
 		if use_instanced_meshes and instance.is_instance:
 			original = instance.instance_object.original
 
-			convertible_to_mesh = ("MESH", "CURVE")
-			if original.type in convertible_to_mesh:
+			if original.type in CONVERTIBLE_TO_MESH:
 				mesh_name = get_mesh_name(instance.instance_object)  # ensure that mesh data has been collected
 				if mesh_name:
 					was_instanced = True
@@ -1341,7 +801,7 @@ def collect_depsgraph(output, use_instanced_meshes, selected_only):
 					parent_data = get_object_data(instance_groups, instance.parent, top_level_objs)
 					last_parent_data = parent_data
 					last_parent = instance.parent
-"""
+					"""
 					parent_data = get_object_data(instance_groups, instance.parent, top_level_objs)
 					instance_lists = parent_data["instances"]
 					instance_list = instance_lists.get(mesh_name)
@@ -1768,37 +1228,17 @@ def collect_and_save(context, args, save_path):
 	}
 
 	log.info("collecting objects")
-	all_objects = context.scene.objects
 
 	selected_only = args["export_selected"]
-	apply_modifiers = args["apply_modifiers"]
 	skip_textures = args["skip_textures"]
-	export_metadata = args["export_metadata"]
 	export_animations = args["export_animations"]
 	use_old_iterator = args["use_old_iterator"]
 	use_instanced_meshes = args["use_instanced_meshes"]
 	config_always_twosided = args["always_twosided"]
 
 	objects = []
-	obj_output = ""
-	if use_old_iterator:
-		datasmith_context["depsgraph"] = context.evaluated_depsgraph_get()
-		root_objects = [obj for obj in all_objects if obj.parent is None]
-		for obj in root_objects:
-			uobj = collect_object(
-				bl_obj=obj,
-				selected_only=selected_only,
-				apply_modifiers=apply_modifiers,
-				export_animations=export_animations,
-				export_metadata=export_metadata,
-			)
-			if uobj:
-				objects.append(uobj)
-	else:  # if not use_old_iterator:
-		# with the depsgraph iterator, we don't start with root objects and then find children.
-		# with the new object iterator, we read the depsgraph evaluated object array
-		log.info("USE NEW OBJECT ITERATOR")
-		obj_output = collect_depsgraph(objects, use_instanced_meshes, selected_only)
+	log.info("USE NEW OBJECT ITERATOR")
+	obj_output = collect_depsgraph(objects, use_instanced_meshes, selected_only)
 
 	anims = []
 	if export_animations:
@@ -1847,22 +1287,12 @@ def collect_and_save(context, args, save_path):
 		anim_nodes.append(anim)
 
 	log.info("writing meshes")
-	num_meshes = 0
-	for mesh in datasmith_context["meshes"].values():
-		mesh.save(basedir, folder_name)
-		num_meshes += 1
-	summary["Num meshes"] = num_meshes
+	meshes = datasmith_context["meshes"].values()
+	mesh_nodes = [mesh_save(mesh, basedir, folder_name) for mesh in meshes]
 
 	log.info("writing textures")
 
-	tex_nodes = []
-	use_gamma_hack = args["use_gamma_hack"]
-
-	for tex in all_textures.values():
-		tex_node = save_texture(tex, basedir, folder_name, skip_textures, use_gamma_hack)
-		tex_nodes.append(tex_node)
-
-	summary["Num textures"] = len(tex_nodes)
+	tex_nodes = [save_texture(tex, basedir, folder_name, skip_textures) for tex in all_textures.values()]
 
 	log.info("building XML tree")
 
@@ -1882,8 +1312,8 @@ def collect_and_save(context, args, save_path):
 		for env in environment:
 			n.push(env)
 
-	for mesh in datasmith_context["meshes"].values():
-		n.push(mesh.node())
+	for mesh_node in mesh_nodes:
+		n.push(mesh_node)
 	for mat in material_nodes:
 		n.push(mat)
 
