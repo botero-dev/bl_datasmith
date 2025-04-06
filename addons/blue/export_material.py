@@ -479,9 +479,9 @@ def get_expression(field, exp_list, force_default=False, skip_default_warn=False
 
 	reverse_expressions[socket] = return_exp
 
+	other_output = field.links[0].from_socket
 	# if a color output is connected to a scalar input, average by using dot product
 	if field.type == "VALUE":
-		other_output = field.links[0].from_socket
 		if other_output.type == "RGBA":
 			n = Node("FunctionCall", {"Function": MAT_FUNC_RGB_TO_BW})
 			push_exp_input(n, "0", return_exp)
@@ -496,7 +496,27 @@ def get_expression(field, exp_list, force_default=False, skip_default_warn=False
 			n.push(exp_input("1", {"expression": exp_1}))
 			dot_exp = exp_list.push(n)
 			return_exp = {"expression": dot_exp}
-
+	elif field.type == "VECTOR":
+		if other_output.type == "RGBA":
+			n = Node("ComponentMask")
+			push_exp_input(n, "0", return_exp)
+			n.push('<Prop name="R" val="True" type="Bool" />')
+			n.push('<Prop name="G" val="True" type="Bool" />')
+			n.push('<Prop name="B" val="True" type="Bool" />')
+			return_exp = {"expression": exp_list.push(n)}
+	# Tried to make this conversion, but it breaks many places. My guess is
+	# that there are many RGBA that we have handled as RGB and it more or
+	# less worked, but if we want to strictly handle correctly every case, we
+	# need to be strict on UE side when sending RGBA data through mix nodes
+	# and stuff. Basically we should strictly know when something is RGBA
+	# instead of trying to append to a maybe already RGBA value.
+	# elif field.type == "RGBA":
+	# 	if other_output.type == "VECTOR":
+	# 		zero = exp_scalar(0, exp_list)
+	# 		n = Node("Append")
+	# 		push_exp_input(n, "0", return_exp)
+	# 		push_exp_input(n, "1", zero)
+	# 		return_exp = {"expression": exp_list.push(n)}
 	elif field.type == "SHADER":
 		other_output = field.links[0].from_socket
 		if other_output.type != "SHADER":
