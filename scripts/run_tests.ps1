@@ -28,7 +28,8 @@ $demos_folder = "$root_folder/demos"
 $test_csv_rows = Import-Csv "$demos_folder/test_files.csv"
 
 $versions = @{
-    "3_6" =    @{ version="3.6";  patch=21  };
+    # "3_6" =    @{ version="3.6";  patch=21  };
+    "3_6" =    @{ version="4.2";  patch=8  };
     "4_2" =    @{ version="4.2";  patch=8  };
     "latest" = @{ version="4.4";  patch=0  };
 }
@@ -38,7 +39,9 @@ $files_to_build = $()
 
 $null = New-Item -Path "$root_folder/export/demos" -ItemType directory -ErrorAction SilentlyContinue
 $report_path = "$root_folder/export/demos/report.csv"
-echo "dir,name,status,time_seconds" > $report_path
+if (-not (Test-Path $report_path)) {
+    echo "timestamp, dir,name,status,time_seconds" > $report_path
+}
 
 foreach ($test_row in $test_csv_rows) {
 
@@ -104,7 +107,6 @@ foreach ($test_row in $test_csv_rows) {
     )
 
     if ($single_thread) {
-        $command += "--debug-depsgraph-no-threads"
         $command += "--threads"
         $command += "1"
     }
@@ -124,6 +126,7 @@ foreach ($test_row in $test_csv_rows) {
     $last_result = $LASTEXITCODE
     $time_seconds = $time.TotalSeconds
     echo "($last_result) File $base_file_name took $time_seconds seconds."
-    echo "$base_file_dir,$base_file_name,$last_result,$time_seconds" >> $report_path
+    $timestamp = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
+    echo "$timestamp,$base_file_dir,$base_file_name,$last_result,$time_seconds" >> $report_path
 
 }

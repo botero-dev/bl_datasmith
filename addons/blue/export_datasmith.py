@@ -191,9 +191,6 @@ def make_mesh_data(bl_mesh):
 	bm.to_mesh(m)
 	bm.free()
 
-	has_calc_normals = hasattr(m, "calc_normals_split")
-	if has_calc_normals:
-		m.calc_normals_split()
 	m.transform(matrix_datasmith)
 
 	vertices = m.vertices
@@ -219,8 +216,7 @@ def make_mesh_data(bl_mesh):
 	normals = np.empty(num_loops * 3, np.float32)
 	loop_triangles.foreach_get("split_normals", normals)
 	normals = normals.reshape((-1, 3))
-	if not has_calc_normals:
-		normals *= -1
+	normals *= -1
 
 	# in case vert has invalid normals, put some dummy data so UE doesn't try to recalculate
 	normals_drift = np.linalg.norm(normals, axis=1) - 1
@@ -1327,7 +1323,7 @@ def collect_and_save(context, args, save_path):
 	total_time = end_time - start_time
 
 	log.info("generating datasmith data took:%f" % total_time)
-	n.push(Node("Export", {"Duration": total_time}))
+	# n.push(Node("Export", {"Duration": total_time}))
 
 	log.info("generating xml")
 	result = n.string_rep(first=True)
