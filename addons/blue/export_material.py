@@ -449,7 +449,7 @@ def get_expression(field, exp_list, force_default=False, skip_default_warn=False
 			return {"expression": exp, "OutputIndex": 0}
 		elif field.type == "VECTOR":
 			use_vector_default = force_default or type(field.default_value) in {Vector, Euler}
-			# here, we're specifically disarding when the field type is
+			# here, we're specifically discarding when the field type is
 			# bpy.types.bpy_prop_array. we do that because when that happens,
 			# most of the time it is because this socket default value is a
 			# custom expression, an example is TEX_IMAGE nodes that by
@@ -479,55 +479,70 @@ def get_expression(field, exp_list, force_default=False, skip_default_warn=False
 
 	reverse_expressions[socket] = return_exp
 
-	other_output = field.links[0].from_socket
-	# if a color output is connected to a scalar input, average by using dot product
-	if field.type == "VALUE":
-		if other_output.type == "RGBA":
-			n = Node("FunctionCall", {"Function": MAT_FUNC_RGB_TO_BW})
-			push_exp_input(n, "0", return_exp)
-			dot_exp = exp_list.push(n)
-			return_exp = {"expression": dot_exp}
-
-		elif other_output.type == "VECTOR":
-			n = Node("DotProduct")
-			exp_0 = return_exp
-			n.push(exp_input("0", exp_0))
-			exp_1 = exp_vector((0.333333, 0.333333, 0.333333), exp_list)
-			n.push(exp_input("1", {"expression": exp_1}))
-			dot_exp = exp_list.push(n)
-			return_exp = {"expression": dot_exp}
-	elif field.type == "VECTOR":
-		if other_output.type == "RGBA":
-			n = Node("ComponentMask")
-			push_exp_input(n, "0", return_exp)
-			n.push('<Prop name="R" val="True" type="Bool" />')
-			n.push('<Prop name="G" val="True" type="Bool" />')
-			n.push('<Prop name="B" val="True" type="Bool" />')
-			return_exp = {"expression": exp_list.push(n)}
-	# Tried to make this conversion, but it breaks many places. My guess is
-	# that there are many RGBA that we have handled as RGB and it more or
-	# less worked, but if we want to strictly handle correctly every case, we
-	# need to be strict on UE side when sending RGBA data through mix nodes
-	# and stuff. Basically we should strictly know when something is RGBA
-	# instead of trying to append to a maybe already RGBA value.
-	# elif field.type == "RGBA":
-	# 	if other_output.type == "VECTOR":
-	# 		zero = exp_scalar(0, exp_list)
-	# 		n = Node("Append")
-	# 		push_exp_input(n, "0", return_exp)
-	# 		push_exp_input(n, "1", zero)
-	# 		return_exp = {"expression": exp_list.push(n)}
-	elif field.type == "SHADER":
+	if return_exp:
 		other_output = field.links[0].from_socket
-		if other_output.type != "SHADER":
-			# maybe a color or a value was connected to a shader socket
-			# so we convert whatever value came to a basic emissive shader
-			value_exp = return_exp
-			exp_base_color = exp_color((0, 0, 0, 1), exp_list)
-			return_exp = {
-				"BaseColor": exp_base_color,
-				"EmissiveColor": value_exp,
-			}
+		# if a color output is connected to a scalar input, average by using dot product
+		if field.type == "VALUE":
+			if other_output.type == "RGBA":
+				n = Node("FunctionCall", {"Function": MAT_FUNC_RGB_TO_BW})
+				push_exp_input(n, "0", return_exp)
+				dot_exp = exp_list.push(n)
+				return_exp = {"expression": dot_exp}
+
+			elif other_output.type == "VECTOR":
+				n = Node("DotProduct")
+				exp_0 = return_exp
+				n.push(exp_input("0", exp_0))
+				exp_1 = exp_vector((0.333333, 0.333333, 0.333333), exp_list)
+				n.push(exp_input("1", {"expression": exp_1}))
+				dot_exp = exp_list.push(n)
+				return_exp = {"expression": dot_exp}
+		elif field.type == "VECTOR":
+			if other_output.type == "RGBA":
+				n = Node("ComponentMask")
+				push_exp_input(n, "0", return_exp)
+				n.push('<Prop name="R" val="True" type="Bool" />')
+				n.push('<Prop name="G" val="True" type="Bool" />')
+				n.push('<Prop name="B" val="True" type="Bool" />')
+				return_exp = {"expression": exp_list.push(n)}
+		# Tried to make this conversion, but it breaks many places. My guess is
+		# that there are many RGBA that we have handled as RGB and it more or
+		# less worked, but if we want to strictly handle correctly every case, we
+		# need to be strict on UE side when sending RGBA data through mix nodes
+		# and stuff. Basically we should strictly know when something is RGBA
+		# instead of trying to append to a maybe already RGBA value.
+		# elif field.type == "RGBA":
+		# 	if other_output.type == "VECTOR":
+		# 		zero = exp_scalar(0, exp_list)
+		# 		n = Node("AppendVector")
+		# 		push_exp_input(n, "0", return_exp)
+		# 		push_exp_input(n, "1", zero)
+		# 		return_exp = {"expression": exp_list.push(n)}
+		elif field.type == "RGBA":
+			if other_output.type == "VECTOR":
+				mask = Node("ComponentMask")
+				push_exp_input(mask, "0", return_exp)
+				mask.push('<Prop name="R" val="True" type="Bool" />')
+				mask.push('<Prop name="G" val="True" type="Bool" />')
+				mask.push('<Prop name="B" val="True" type="Bool" />')
+				masked_exp = {"expression": exp_list.push(mask)}
+
+				zero = {"expression": exp_scalar(0, exp_list)}
+				n = Node("AppendVector")
+				push_exp_input(n, "0", masked_exp)
+				push_exp_input(n, "1", zero)
+				return_exp = {"expression": exp_list.push(n)}
+		elif field.type == "SHADER":
+			other_output = field.links[0].from_socket
+			if other_output.type != "SHADER":
+				# maybe a color or a value was connected to a shader socket
+				# so we convert whatever value came to a basic emissive shader
+				value_exp = return_exp
+				exp_base_color = exp_color((0, 0, 0, 1), exp_list)
+				return_exp = {
+					"BaseColor": exp_base_color,
+					"EmissiveColor": value_exp,
+				}
 
 	# return_exp can be null, we may need some clearer behavior on corner cases
 	return return_exp
