@@ -2,9 +2,9 @@
 *.pyc
 
 
-/ue427_template/Saved
-/ue427_template/Intermediate
-/template_427
+/ue_template/Saved
+/ue_template/Intermediate
+/samples
 
 
 /bin
@@ -17,4 +17,3 @@
 /screenshots
 /startup
 /www
-/template_53
