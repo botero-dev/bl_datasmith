@@ -19,6 +19,9 @@ if "bpy" in locals():
 	import importlib
 	if "export_datasmith" in locals():
 		importlib.reload(export_datasmith)
+	if "export_material" in locals():
+		importlib.reload(export_material)
+
 
 import bpy
 from bpy.props import (
@@ -70,7 +73,7 @@ class ExportDatasmith(bpy.types.Operator, ExportHelper):
 	export_animations: BoolProperty(
 			name="Export animations",
 			description="Export object animations (transforms only)",
-			default=True,
+			default=False,
 		)
 	export_metadata: BoolProperty(
 			name="Write metadata",
@@ -115,7 +118,7 @@ class ExportDatasmith(bpy.types.Operator, ExportHelper):
 	use_telemetry: BoolProperty(
 			name="Enable telemetry",
 			description="Sends export result data to the devs to gather product defects",
-			default=True,
+			default=False,
 		)
 	
 	def execute(self, context):

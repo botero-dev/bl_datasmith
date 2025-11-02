@@ -341,10 +341,18 @@ def exp_vector(value, exp_list):
 
 
 def exp_color(value, exp_list, name=None):
-	n = Node("Color", {"constant": "(R=%.6f,G=%.6f,B=%.6f,A=%.6f)" % tuple(value)})
+	color = Node("Color", {"constant": "(R=%.6f,G=%.6f,B=%.6f,A=%.6f)" % tuple(value)})
 	if name:
-		n["Name"] = name
-	return exp_list.push(n)
+		color["Name"] = name
+	color_exp = exp_list.push(color)
+
+	alpha_exp = exp_scalar(value[3], exp_list)
+
+	append = Node("AppendVector")
+	push_exp_input(append, "0", color_exp)
+	push_exp_input(append, "1", alpha_exp)
+
+	return exp_list.push(append)
 
 
 def exp_output(output_id, expression):
@@ -511,13 +519,13 @@ def get_expression(field, exp_list, force_default=False, skip_default_warn=False
 		# need to be strict on UE side when sending RGBA data through mix nodes
 		# and stuff. Basically we should strictly know when something is RGBA
 		# instead of trying to append to a maybe already RGBA value.
-		# elif field.type == "RGBA":
-		# 	if other_output.type == "VECTOR":
-		# 		zero = exp_scalar(0, exp_list)
-		# 		n = Node("AppendVector")
-		# 		push_exp_input(n, "0", return_exp)
-		# 		push_exp_input(n, "1", zero)
-		# 		return_exp = {"expression": exp_list.push(n)}
+		elif field.type == "RGBA":
+			if other_output.type == "VECTOR":
+				zero = exp_scalar(0, exp_list)
+				n = Node("AppendVector")
+				push_exp_input(n, "0", return_exp)
+				push_exp_input(n, "1", zero)
+				return_exp = {"expression": exp_list.push(n)}
 		elif field.type == "RGBA":
 			if other_output.type == "VECTOR":
 				mask = Node("ComponentMask")
@@ -1386,7 +1394,7 @@ def exp_tex_image(socket, exp_list):
 		normal_to_01 = Node("FunctionCall", {"Function": "/DatasmithBlenderContent/MaterialFunctions/NormalTo01"})
 		push_exp_input(normal_to_01, "0", exp_idx)
 		exp_idx = exp_list.push(normal_to_01)
-	NODE_TEX_IMAGE_OUTPUTS = ("Color", 0, 0, 0, "Alpha")
+	NODE_TEX_IMAGE_OUTPUTS = (0, 0, 0, 0, "Alpha", "Color")
 	cached_node = (exp_idx, NODE_TEX_IMAGE_OUTPUTS)
 	cached_nodes[node] = cached_node
 
