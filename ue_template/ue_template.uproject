@@ -12,7 +12,8 @@
 			"Name": "DatasmithCADImporter",
 			"Enabled": true,
 			"SupportedTargetPlatforms": [
-				"Win64"
+				"Win64",
+				"Linux"
 			]
 		},
 		{
@@ -64,6 +65,10 @@
 		},
 		{
 			"Name": "MoviePipelineMaskRenderPass",
+			"Enabled": true
+		},
+		{
+			"Name": "DatasmithBlenderContent",
 			"Enabled": true
 		}
 	]

@@ -759,7 +759,8 @@ def create_object(obj):
 	}
 	original = obj.original
 	if original:
-		object_data["layer"] = original.users_collection[0].name_full
+		if original.users_collection:
+			object_data["layer"] = original.users_collection[0].name_full
 
 	object_data["transform"] = collect_object_transform2(obj)
 	return object_data

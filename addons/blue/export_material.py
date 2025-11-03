@@ -513,33 +513,22 @@ def get_expression(field, exp_list, force_default=False, skip_default_warn=False
 				n.push('<Prop name="G" val="True" type="Bool" />')
 				n.push('<Prop name="B" val="True" type="Bool" />')
 				return_exp = {"expression": exp_list.push(n)}
-		# Tried to make this conversion, but it breaks many places. My guess is
-		# that there are many RGBA that we have handled as RGB and it more or
-		# less worked, but if we want to strictly handle correctly every case, we
-		# need to be strict on UE side when sending RGBA data through mix nodes
-		# and stuff. Basically we should strictly know when something is RGBA
-		# instead of trying to append to a maybe already RGBA value.
+
 		elif field.type == "RGBA":
 			if other_output.type == "VECTOR":
-				zero = exp_scalar(0, exp_list)
+				alpha = exp_scalar(1, exp_list) # Don't know if its better to use 0 or 1 here
 				n = Node("AppendVector")
 				push_exp_input(n, "0", return_exp)
-				push_exp_input(n, "1", zero)
+				push_exp_input(n, "1", alpha)
 				return_exp = {"expression": exp_list.push(n)}
-		elif field.type == "RGBA":
-			if other_output.type == "VECTOR":
-				mask = Node("ComponentMask")
-				push_exp_input(mask, "0", return_exp)
-				mask.push('<Prop name="R" val="True" type="Bool" />')
-				mask.push('<Prop name="G" val="True" type="Bool" />')
-				mask.push('<Prop name="B" val="True" type="Bool" />')
-				masked_exp = {"expression": exp_list.push(mask)}
+			elif other_output.type == "VALUE":
+				# This makes the output safer, because next node may expect this is a vector
+				n = Node("FunctionCall", {"Function": MAT_FUNC_COMBINE_RGB})
+				push_exp_input(n, "0", return_exp)
+				push_exp_input(n, "1", return_exp)
+				push_exp_input(n, "2", return_exp)
+				return_exp = {"expression": exp_list.push(n)}
 
-				zero = {"expression": exp_scalar(0, exp_list)}
-				n = Node("AppendVector")
-				push_exp_input(n, "0", masked_exp)
-				push_exp_input(n, "1", zero)
-				return_exp = {"expression": exp_list.push(n)}
 		elif field.type == "SHADER":
 			other_output = field.links[0].from_socket
 			if other_output.type != "SHADER":
@@ -948,24 +937,36 @@ def exp_ambient_occlusion(socket, exp_list):
 @blender_node("ATTRIBUTE")
 def exp_attribute(socket, exp_list):
 	exp = exp_list.push(Node("VertexColor"))
-	ret = {"expression": exp, "OutputIndex": 0}
 	# average channels if socket is Fac
 	if socket.name == "Fac":
 		# TODO: check if we should do some colorimetric aware convertion to grayscale
 		n = Node("DotProduct")
-		n.push(exp_input("0", ret))
 		exp_1 = exp_vector((0.333333, 0.333333, 0.333333), exp_list)
-		n.push(exp_input("1", exp_1))
+		push_exp_input(n, "0", exp)
+		push_exp_input(n, "1", exp_1)
 		dot_exp = exp_list.push(n)
-		ret = {"expression": dot_exp}
-	return ret
+		return {"expression": dot_exp}
+
+	elif socket.name == "Vector":
+		return {"expression": exp}
+
+	else: # if socket.name == "Color":
+		append = Node("AppendVector")
+		push_exp_input(append, "0", exp, 0)
+		push_exp_input(append, "1", exp, 4)
+		append_exp = exp_list.push(append)
+		return {"expression": append_exp}
 
 
 @blender_node("VERTEX_COLOR")
 def exp_vertex_color(socket, exp_list):
 	exp = exp_list.push(Node("VertexColor"))
 	if socket.name == "Color":
-		return {"expression": exp, "OutputIndex": 0}
+		append = Node("AppendVector")
+		push_exp_input(append, "0", exp, 0)
+		push_exp_input(append, "1", exp, 4)
+		append_exp = exp_list.push(append)
+		return {"expression": append_exp, "OutputIndex": 0}
 	elif socket.name == "Alpha":
 		return {"expression": exp, "OutputIndex": 4}
 
@@ -1097,12 +1098,7 @@ def exp_particle_info(socket, exp_list):
 
 @blender_node("RGB")
 def exp_rgb(socket, exp_list):
-	node_value = socket.default_value
-	n = Node("Color", {"constant": "(R=%.6f,G=%.6f,B=%.6f,A=%.6f)" % tuple(node_value)})
-
-	if socket.node.label:
-		n["Name"] = socket.node.label
-	return {"expression": exp_list.push(n)}
+	return exp_color(socket.default_value, exp_list, socket.node.label)
 
 
 # if we flip the Y axis of the UVs when first querying them, and then flip it
@@ -1390,11 +1386,13 @@ def exp_tex_image(socket, exp_list):
 
 	exp_idx = exp_list.push(texture_exp)
 
-	if texture_type == MAT_CTX_NORMAL:
-		normal_to_01 = Node("FunctionCall", {"Function": "/DatasmithBlenderContent/MaterialFunctions/NormalTo01"})
-		push_exp_input(normal_to_01, "0", exp_idx)
-		exp_idx = exp_list.push(normal_to_01)
 	NODE_TEX_IMAGE_OUTPUTS = (0, 0, 0, 0, "Alpha", "Color")
+	if texture_type == MAT_CTX_NORMAL:
+		NODE_TEX_IMAGE_OUTPUTS = ("Color", "Alpha")
+		normal_to_01 = Node("FunctionCall", {"Function": "/DatasmithBlenderContent/MaterialFunctions/NormalTo01"})
+		push_exp_input(normal_to_01, "0", exp_idx, 5)
+		exp_idx = exp_list.push(normal_to_01)
+
 	cached_node = (exp_idx, NODE_TEX_IMAGE_OUTPUTS)
 	cached_nodes[node] = cached_node
 
@@ -1940,20 +1938,22 @@ def exp_normal(socket, exp_list):
 
 @blender_node("NORMAL_MAP")
 def exp_normal_map(socket, exp_list):
-	node_input = socket.node.inputs["Color"]
+	input_strength = socket.node.inputs["Strength"]
+	exp_strength = get_expression(input_strength, exp_list)
+
 	# hack: is it safe to assume that everything under here is normal?
 	# maybe not, because it could be masks to mix normals
 	# most certainly, these wouldn't be colors (so should be non-srgb nonetheless)
+	input_color = socket.node.inputs["Color"]
 	push_texture_context(MAT_CTX_NORMAL)
-	return_exp = get_expression(node_input, exp_list)
+	exp_color = get_expression(input_color, exp_list)
 	pop_texture_context()
 
-	strength_input = socket.node.inputs["Strength"]
 	node_strength = Node("FunctionCall", {"Function": "/DatasmithBlenderContent/MaterialFunctions/NormalStrength"})
-	node_strength.push(exp_input("0", return_exp))
-	node_strength.push(exp_input("1", get_expression(strength_input, exp_list)))
-	return_exp = {"expression": exp_list.push(node_strength)}
-	return return_exp
+	push_exp_input(node_strength, "0", exp_strength)
+	push_exp_input(node_strength, "1", exp_color)
+	return {"expression": exp_list.push(node_strength)}
+
 
 
 VECT_TRANSFORM_TYPE = ("POINT", "VECTOR", "NORMAL")
@@ -2097,12 +2097,21 @@ def exp_color_ramp(socket, exp_list):
 
 MAT_FUNC_MAKE_FLOAT3 = "/Engine/Functions/Engine_MaterialFunctions02/Utility/MakeFloat3"
 
-
-@blender_node("COMBRGB")
 @blender_node("COMBXYZ")
 def exp_make_vec3(socket, exp_list):
 	node = socket.node
 	output = Node("FunctionCall", {"Function": MAT_FUNC_MAKE_FLOAT3})
+	output.push(exp_input("0", get_expression(node.inputs[0], exp_list)))
+	output.push(exp_input("1", get_expression(node.inputs[1], exp_list)))
+	output.push(exp_input("2", get_expression(node.inputs[2], exp_list)))
+	return {"expression": exp_list.push(output)}
+
+
+MAT_FUNC_COMBINE_RGB = "/DatasmithBlenderContent/MaterialFunctions/CombineRGB"
+@blender_node("COMBRGB")
+def exp_combine_rgb(socket, exp_list):
+	node = socket.node
+	output = Node("FunctionCall", {"Function": MAT_FUNC_COMBINE_RGB})
 	output.push(exp_input("0", get_expression(node.inputs[0], exp_list)))
 	output.push(exp_input("1", get_expression(node.inputs[1], exp_list)))
 	output.push(exp_input("2", get_expression(node.inputs[2], exp_list)))
@@ -2123,7 +2132,7 @@ def exp_make_hsv(socket, exp_list):
 
 
 NODE_COMBINE_COLOR_MAP = {
-	"RGB": MAT_FUNC_MAKE_FLOAT3,
+	"RGB": MAT_FUNC_COMBINE_RGB,
 	"HSV": MAT_FUNC_HSV_TO_RGB,
 	# TODO: implement HSL
 }
@@ -2141,12 +2150,10 @@ def exp_combine_color(socket, exp_list):
 	return {"expression": exp_list.push(output)}
 
 
-NODE_BREAK_RGB_OUTPUTS = ("R", "G", "B")
 NODE_BREAK_XYZ_OUTPUTS = ("X", "Y", "Z")
 MAT_FUNC_BREAK_FLOAT3 = "/Engine/Functions/Engine_MaterialFunctions02/Utility/BreakOutFloat3Components"
 
 
-@blender_node("SEPRGB")
 @blender_node("SEPXYZ")
 def exp_break_vec3(socket, exp_list):
 	node = socket.node
@@ -2154,8 +2161,22 @@ def exp_break_vec3(socket, exp_list):
 	output.push(exp_input("0", get_expression(node.inputs[0], exp_list)))
 	expression_idx = exp_list.push(output)
 
-	reverse_map = NODE_BREAK_RGB_OUTPUTS if node.type == "SEPRGB" else NODE_BREAK_XYZ_OUTPUTS
-	cached_node = (expression_idx, reverse_map)
+	cached_node = (expression_idx, NODE_BREAK_XYZ_OUTPUTS)
+	cached_nodes[node] = cached_node
+	return exp_from_cache(cached_node, socket.name)
+
+
+NODE_BREAK_RGB_OUTPUTS = ("R", "G", "B")
+MAT_FUNC_SEPRGB = "/DatasmithBlenderContent/MaterialFunctions/SeparateRGB"
+
+@blender_node("SEPRGB")
+def exp_seprgb(socket, exp_list):
+	node = socket.node
+	output = Node("FunctionCall", {"Function": MAT_FUNC_SEPRGB})
+	output.push(exp_input("0", get_expression(node.inputs[0], exp_list)))
+	expression_idx = exp_list.push(output)
+
+	cached_node = (expression_idx, NODE_BREAK_RGB_OUTPUTS)
 	cached_nodes[node] = cached_node
 	return exp_from_cache(cached_node, socket.name)
 
