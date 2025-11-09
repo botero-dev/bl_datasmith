@@ -2,7 +2,7 @@
 # Copyright 2024 Andrés Botero
 
 $build_path = "C:/tmp/vertexforge_build"
-$branch_name = "$args[0]"
+$branch_name = $args[0]
 
 Remove-Item -Path $build_path -Recurse -Force
 New-Item -Path $build_path -ItemType Directory -Force
