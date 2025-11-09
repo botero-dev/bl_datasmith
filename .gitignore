@@ -1,6 +1,6 @@
 .DS_Store
 *.pyc
-
+.ruff_cache
 
 /ue_template/Saved
 /ue_template/Intermediate

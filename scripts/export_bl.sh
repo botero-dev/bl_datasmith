@@ -15,6 +15,8 @@ mkdir -p "$build_folder"
 
 # Package blender plugin
 bl_product_name="blue"
+bl_folder_name="blue"
+
 bl_target_path="$build_folder/${bl_product_name}"
 
 if [ -d "$bl_target_path" ]; then
@@ -23,11 +25,11 @@ if [ -d "$bl_target_path" ]; then
 fi
 
 echo "Copying to $bl_target_path"
-cp -r "$base_path/addons/blue" "$bl_target_path"
+cp -r "$base_path/addons/$bl_folder_name" "$bl_target_path"
 rm -rf "$bl_target_path/__pycache__"
 
 # Specify the file path
-init_path="$base_path/addons/blue/__init__.py"
+init_path="$base_path/addons/$bl_folder_name/__init__.py"
 target_path="$bl_target_path/__init__.py"
 
 # Get the environment variables

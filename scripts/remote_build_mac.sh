@@ -6,6 +6,7 @@ echo "remote_build_mac.sh"
 set -euv
 
 build_path="tmp/vertexforge_build"
+branch_name="$1"
 
 rm -rf $build_path
 mkdir -p $build_path
@@ -14,6 +15,8 @@ mkdir -p $build_path
 echo git clone "git@github.com:vertexforge/vertexforge.git" "$build_path"
 git clone "git@github.com:vertexforge/vertexforge.git" "$build_path"
 pushd $build_path
+
+git checkout "$branch_name"
 
 ./scripts/build_all_mac.sh
 
