@@ -28,7 +28,7 @@ monotonic="$BUILD_NUMBER"
 blender_export_path="export/gumroad/blue-$monotonic-blender.zip"
 cp "build/blue-blender.zip" "$blender_export_path"
 
-engine_versions="UE_4.27 UE_5.4 UE_5.5"
+engine_versions="UE_5.4 UE_5.5 UE_5.6"
 IFS=" "
 
 base=$(pwd)
@@ -44,10 +44,9 @@ for engine_version in $engine_versions; do
 
     mkdir -p "$export_path/$plugin_name"
 
-    ue_plugin_path="$plugin_name"
+    ue_plugin_path="ue_template/Plugins/$plugin_name"
     cp -r "$ue_plugin_path" "$export_path"
     cp "$blender_export_path" "$export_path"
-
     cp -r "build/win/$engine_version/$plugin_name" "$export_path"
     cp -r "build/mac/$engine_version/$plugin_name" "$export_path"
     cp -r "build/linux/$engine_version/$plugin_name" "$export_path"
