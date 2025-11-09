@@ -23,7 +23,7 @@ if (!$ue_path) {
 }
 
 $uat_path = "$ue_path/Engine/Build/BatchFiles/RunUAT.bat"
-$plugin_path = "$base_path/DatasmithBlenderContent/DatasmithBlenderContent.uplugin"
+$plugin_path = "$base_path/ue_template/Plugins/DatasmithBlenderContent/DatasmithBlenderContent.uplugin"
 
 $cmd_args = @(
     "BuildPlugin",

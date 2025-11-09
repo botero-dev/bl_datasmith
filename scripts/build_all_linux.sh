@@ -20,6 +20,7 @@ mkdir -p "$base_path/build/linux"
 engine_versions=(
     "5.4"
     "5.5"
+    "5.6"
 )
 
 # Iterate over the list and call echo with each string

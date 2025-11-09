@@ -22,9 +22,9 @@ mkdir -p "$base_path/build/mac"
 launcher_apps="$HOME/Library/Application Support/Epic/UnrealEngineLauncher/LauncherInstalled.dat"
 
 engine_versions=(
-    "UE_4.27"
     "UE_5.4"
     "UE_5.5"
+    "UE_5.6"
 )
 
 # Iterate over the list and call echo with each string

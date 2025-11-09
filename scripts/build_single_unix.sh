@@ -50,7 +50,7 @@ fi
 #pragma clang diagnostic ignored "-Wsingle-bit-bitfield-constant-conversion"
 
 target_path="$target_path/DatasmithBlenderContent"
-plugin_path="$base_path/DatasmithBlenderContent"
+plugin_path="$base_path/ue_template/Plugins/DatasmithBlenderContent"
 
 echo "Running UAT BuildPlugin"
 
