@@ -12,7 +12,7 @@ float3 mod(float3 x, float3 y)
 
 
 void node_tex_magic(
-    float3 co, float scale, float distortion, float depth, out float3 color, out float fac)
+    float3 co, float scale, float distortion, float depth, out float4 color, out float fac)
 {
   float3 p = mod(co * scale, 2.0 * M_PI);
 
@@ -70,6 +70,6 @@ void node_tex_magic(
     z /= distortion;
   }
 
-  color = float3(0.5 - x, 0.5 - y, 0.5 - z);
+  color = float4(0.5 - x, 0.5 - y, 0.5 - z, 1.0);
   fac = (color.x + color.y + color.z) / 3.0;
 }
