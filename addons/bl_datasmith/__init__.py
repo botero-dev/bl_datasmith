@@ -3,14 +3,15 @@
 
 from bpy import props, types, utils
 from bpy_extras import io_utils
+import importlib
 
 bl_info = {
-	"name": "Unreal Datasmith format",
+	"name": "Unreal Datasmith Import/Export",
 	"author": "Andrés Botero",
 	"version": (1, 1, 0),
 	"blender": (2, 93, 0),
-	"location": "File > Export > Datasmith (.udatasmith)",
-	"description": "Export scene as Datasmith asset",
+	"location": "File > Import/Export > Datasmith (.udatasmith)",
+	"description": "Import from / Export to Datasmith scene format",
 	"warning": "",
 	"category": "Import-Export",
 	"support": 'COMMUNITY',
@@ -18,12 +19,12 @@ bl_info = {
 }
 
 
-if "bpy" in locals():
-	import importlib
-	if "export_datasmith" in locals():
-		importlib.reload(export_datasmith) # noqa: F821
-	if "export_material" in locals():
-		importlib.reload(export_material) # noqa: F821
+if "export_datasmith" in locals():
+	importlib.reload(export_datasmith) # noqa: F821
+if "export_material" in locals():
+	importlib.reload(export_material) # noqa: F821
+if "import_datasmith" in locals():
+	importlib.reload(import_datasmith) # noqa: F821
 
 
 class ExportDatasmith(types.Operator, io_utils.ExportHelper):
@@ -115,16 +116,63 @@ class ExportDatasmith(types.Operator, io_utils.ExportHelper):
 		from . import export_datasmith
 		return export_datasmith.save(context, keywords)
 
+
+
+class ImportDatasmith(types.Operator, io_utils.ImportHelper):
+	"""Import a Datasmith file"""
+	bl_idname = "import_scene.datasmith"
+	bl_label = "Import Datasmith"
+	bl_options = {'PRESET'}
+
+	filename_ext = ".udatasmith"
+	filter_glob: props.StringProperty(default="*.udatasmith", options={'HIDDEN'})
+
+	try_update: props.BoolProperty(
+		name = "Try update",
+		description="Tries updating existing objects instead of creating new ones (TESTING)",
+		default=False,
+	)
+	use_logging: props.BoolProperty(
+		name="Enable logging",
+		description="Enable logging to Window > System console",
+		default=True,
+	)
+	log_level: props.EnumProperty(
+		name="Log level",
+		items=(
+			("NEVER", "Never",    "Don't write a logfile"),
+			("ERROR", "Errors",   "Only output critical information"),
+			("WARN",  "Warnings", "Write warnings in logfile"),
+			("INFO",  "Info",     "Write report info in logfile"),
+			("DEBUG", "Debug",    "Write debug info in logfile"),
+		),
+		default="DEBUG",
+	)
+
+	def execute(self, context):
+		keywords = self.as_keywords(ignore=("filter_glob",))
+		from . import import_datasmith
+		return import_datasmith.load_wrapper(context=context, **keywords)
+
+
+
 def menu_func_export(self, context):
 	self.layout.operator(ExportDatasmith.bl_idname, text="Datasmith (.udatasmith)")
 
+def menu_func_import(self, context):
+	self.layout.operator(ImportDatasmith.bl_idname, text="Datasmith (.udatasmith)")
+
 def register():
 	utils.register_class(ExportDatasmith)
+	utils.register_class(ImportDatasmith)
 	types.TOPBAR_MT_file_export.append(menu_func_export)
+	types.TOPBAR_MT_file_import.append(menu_func_import)
 
 def unregister():
 	types.TOPBAR_MT_file_export.remove(menu_func_export)
+	types.TOPBAR_MT_file_import.remove(menu_func_import)
 	utils.unregister_class(ExportDatasmith)
+	utils.unregister_class(ImportDatasmith)
 
 if __name__ == "__main__":
 	register()
