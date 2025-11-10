@@ -35,21 +35,23 @@ if (Test-Path -Path $zip_path) {
 
 $plugin_name = "DatasmithBlenderContent"
 $release_path = "$base_path/export/gumroad"
+$addon_name = "bl_datasmith"
 
-$bl_zip_name = "blue-${build_number}-blender.zip"
+$bl_zip_name = "${addon_name}-${build_number}-blender.zip"
 $bl_zip_path = "$release_path/$bl_zip_name"
 
 if (Test-Path -Path $release_path) {
     Remove-Item -Path "$release_path" -Recurse -Force
 }
+
 New-Item -Path "$release_path" -ItemType Directory
 
-Copy-Item -Path "$build_path/blue-blender.zip" -Destination "$bl_zip_path" -Recurse
+Copy-Item -Path "$build_path/${addon_name}-blender.zip" -Destination "$bl_zip_path" -Recurse
 
 $engine_versions = @(
-    "UE_4.27"
     "UE_5.4"
     "UE_5.5"
+    "UE_5.6"
 )
 
 foreach($engine_version in $engine_versions) {
@@ -68,7 +70,7 @@ foreach($engine_version in $engine_versions) {
     # export_bl already created the zip file for blender
     # and we will try to mix into the exported ue plugin the built versions we find in /build
 
-    Write-Output "Copying : $build_path/blue-blender.zip to $export_path"
+    Write-Output "Copying : $bl_zip_path to $export_path"
     Copy-Item -Path "$bl_zip_path" -Destination "$export_path/" -Recurse
 
     $ue_plugin_path = "$base_path/$plugin_name"
@@ -95,7 +97,7 @@ foreach($engine_version in $engine_versions) {
     # Write-Host "Copying README"
     # Copy-Item -Path "README.txt" -Destination "$build_path/"
 
-    $export_name = "blue-${build_number}-${engine_version}.zip"
+    $export_name = "${addon_name}-${build_number}-${engine_version}.zip"
     $build_filename = "$release_path/$export_name"
 
     Remove-Item -Path "$build_filename" -ErrorAction SilentlyContinue

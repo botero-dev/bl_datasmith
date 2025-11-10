@@ -6,15 +6,16 @@ A full build of the plugin would follow `scripts/all.ps1`
 Working
 --------
 
-Blender plugin source code is at the folder `addons/blue`. This accomodation
-allows us to set the repo root folder as a scripts source folder in Blender.
+Blender plugin source code is at the folder `addons/bl_datasmith`. This
+accomodation allows us to set the repo root folder as a scripts source folder in
+Blender.
 
 
 Building
 --------
 
-`scripts/export_bl.ps1` creates the `blue-blender.zip` file that can be loaded
-in blender as an addon.
+`scripts/export_bl.ps1` creates the `bl_datasmith-blender.zip` file that can be
+loaded in blender as an addon.
 
 `scripts/build_all_win.ps1` builds the UE plugin with many engine versions.
 `scripts/build_all_mac.sh` does the same in Mac.
@@ -26,7 +27,7 @@ you can build the plugin in remote hosts and then pull it back with the
 The `scripts/package_epic.ps1` makes a zip package that includes the UE
 plugin, and the Blender addon in another zip file
 
-The `scripts/package_gumroad.ps1` makes a folder with many zip files with the
+The `scripts/package_standalone.ps1` makes a folder with many zip files with the
 plugin built for many UE versions. also a separate download of the Blender
 plugin is provided.
 

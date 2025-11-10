@@ -8,7 +8,7 @@ $base_path = Resolve-Path "$PSScriptRoot/.."
 $build_folder = "$base_path/build"
 
 # package blender plugin
-$bl_product_name = "blue"
+$bl_product_name = "bl_datasmith"
 $bl_target_path = "$build_folder/${bl_product_name}"
 
 
@@ -18,7 +18,7 @@ if (Test-Path -Path $bl_target_path) {
 }
 Write-Output "Copying to $bl_target_path"
 
-Copy-Item -Path "$base_path/addons/blue" -Destination "$bl_target_path" -Recurse
+Copy-Item -Path "$base_path/addons/${bl_product_name}" -Destination "$bl_target_path" -Recurse
 Remove-Item "$bl_target_path/__pycache__" -Recurse -ErrorAction SilentlyContinue
 
 

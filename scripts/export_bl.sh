@@ -14,8 +14,8 @@ build_folder="$base_path/build"
 mkdir -p "$build_folder"
 
 # Package blender plugin
-bl_product_name="blue"
-bl_folder_name="blue"
+bl_product_name="bl_datasmith"
+bl_folder_name="bl_datasmith"
 
 bl_target_path="$build_folder/${bl_product_name}"
 

@@ -101,7 +101,7 @@ foreach ($test_row in $test_csv_rows) {
         #"--log-level", "-1",
         #"--log-file", "${target_file_path}.log",
         #"--debug-all",
-        "--addons", "blue",
+        "--addons", "bl_datasmith",
         "--python-exit-code", "17",
         "--python", "$scripts_folder/bl_export_datasmith.py"
     )

@@ -20,13 +20,15 @@ echo unzip build/mac.zip -d build/mac
 unzip build/mac.zip -d build/mac >> /dev/null
 chmod -R u+X "build/mac"
 
-rm -rf "export/gumroad"
+release_path="export/standalone"
+rm -rf "$release_path"
+mkdir -p "$release_path"
 
-mkdir -p "export/gumroad"
-
+product_name="bl_datasmith"
 monotonic="$BUILD_NUMBER"
-blender_export_path="export/gumroad/blue-$monotonic-blender.zip"
-cp "build/blue-blender.zip" "$blender_export_path"
+
+blender_export_path="$export_path/$product_name-$monotonic-blender.zip"
+cp "build/$product_name-blender.zip" "$blender_export_path"
 
 engine_versions="UE_5.4 UE_5.5 UE_5.6"
 IFS=" "
@@ -35,7 +37,6 @@ base=$(pwd)
 for engine_version in $engine_versions; do
     cd "$base"
     echo "Exporting for $engine_version"
-    release_path="export/gumroad"
     export_path="$release_path/$engine_version"
 
     rm -rf "$export_path"
@@ -52,8 +53,10 @@ for engine_version in $engine_versions; do
     cp -r "build/linux/$engine_version/$plugin_name" "$export_path"
 
     cd "$export_path"
-    zip -r "../blue-$monotonic-${engine_version}.zip" "." > /dev/null
-    echo "Packaged:" "blue-$monotonic-${engine_version}.zip"
+
+    export_file_name="$product_name-$monotonic-${engine_version}.zip"
+    zip -r "../$export_file_name" "." > /dev/null
+    echo "Packaged: $export_file_name"
 done
 
 echo "Done!"
