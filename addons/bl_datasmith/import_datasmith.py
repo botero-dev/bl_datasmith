@@ -45,18 +45,6 @@ def handle_transform(node, iter):
 
 	return (loc, rot, scale)
 
-# may be named parse_light_color?
-def handle_color(node, iter):
-	attr = node.attrib
-	use_temp = attr['usetemp']
-
-	color = (attr['R'], attr['G'], attr['B'])
-
-	action, closing = next(iter)
-	assert action == "end"
-	assert closing == node
-
-	return color
 
 def unhandled(_ctx, node, iter):
 #	if node.tag == "material":
@@ -103,11 +91,17 @@ def fill_value(target, node, iter):
 	check_close(node, iter)
 	target[node.tag] = float(node.attrib["value"])
 
+def fill_value_str(target, node, iter):
+	check_close(node, iter)
+	target[node.tag] = node.attrib["value"]
+
 def fill_light_color(target, node, iter):
 	check_close(node, iter)
 	attr = node.attrib
 	use_temp = attr['usetemp']
-	target["color"] = (attr['R'], attr['G'], attr['B'])
+	target["color"] = (float(attr['R']), float(attr['G']), float(attr['B']))
+
+
 
 def parse_kvp_bool(text_value):
 	return text_value
@@ -181,12 +175,22 @@ actor_maps = {
 	"Camera": {
 		"Transform":      fill_transform,
 		"children":       handle_actor_children,
-		"FocalLength":    fill_value,
+		#"DepthOfField":    fill_value,
+		"SensorWidth":    fill_value,
+		"SensorAspectRatio": fill_value,
+		"FocusDistance": fill_value,
+		"FStop": fill_value,
+		"FocalLength": fill_value,
 	},
 	"Light": {
 		"Transform":  fill_transform,
-		"Color":      fill_light_color,
 		"children":   handle_actor_children,
+		"Color":      fill_light_color,
+		#"Shape"
+		"SourceSize": fill_value,
+		"Intensity":  fill_value,
+		"AttenuationRadius": fill_value,
+		"IntensityUnits": fill_value_str,
 	},
 }
 
@@ -199,6 +203,8 @@ def handle_actor_common(target, node, iter):
 		"type": node_type,
 		"children": [],
 	}
+	if node_type == "Light":
+		actor["light_type"] = node.attrib["type"]
 	filler_map = actor_maps.get(node_type, {})
 	for action, child in iter:
 		if action == 'end':
@@ -1180,13 +1186,45 @@ datasmith_transform_matrix[1][1] *= -1.0
 ue_transform_mat = datasmith_transform_matrix
 ue_transform_mat_inv = ue_transform_mat.inverted()
 
+# used for lights and cameras, whose forward is (0, 0, -1) and its right is (1, 0, 0)
+matrix_forward = Matrix(
+	(
+		(0, 1, 0, 0),
+		(0, 0, -1, 0),
+		(-1, 0, 0, 0),
+		(0, 0, 0, 1),
+	)
+)
+
+matrix_forward_inv = matrix_forward.inverted()
+
+
 def link_actor(uscene, actor, in_parent=None):
 	actor_name = actor["name"]
 	log.debug("linking actor %s" % actor_name)
 	data = None
-	if actor["type"] == 'ActorMesh':
+	actor_type = actor["type"]
+	if actor_type == 'ActorMesh':
 		mesh_name = actor["mesh"]
 		data = uscene["meshes"][mesh_name]["bl_mesh"]
+	elif actor_type == "Light":
+		light_type_map = {
+			"PointLight": "POINT",
+			"AreaLight": "AREA",
+			"DirectionalLight": "SUN",
+			"SpotLight": "SPOT",
+
+		}
+		light_type = light_type_map[actor["light_type"]]
+		data = bpy.data.lights.new(actor_name, light_type)
+
+		data.color = actor["color"]
+		data.energy = 12.5 * float(actor["Intensity"])
+
+
+	elif actor_type == "Camera":
+		data = bpy.data.cameras.new(actor_name)
+
 	bl_obj = bpy.data.objects.new(actor_name, data)
 	bl_obj.parent = in_parent
 
@@ -1204,6 +1242,9 @@ def link_actor(uscene, actor, in_parent=None):
 	# mat_out = datasmith_transform_matrix @ mat_out
 	# mat_out = mat_out @ matrix_datasmith.inverted()
 	mat_out = ue_transform_mat @ mat_out @ ue_transform_mat_inv
+
+	if actor_type == "Camera" or actor_type == "Light":
+		mat_out = mat_out @ matrix_forward_inv
 
 	bl_obj.matrix_world = mat_out
 	master_collection = bpy.data.collections[0]
