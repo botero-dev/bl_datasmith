@@ -464,28 +464,20 @@ def handle_material(uscene, node, iter):
 	assert child == node
 	assert action == 'end'
 
-
-
 	uscene["materials"][material_name] = material
-
-
-pbrmaterial_inputs = [
-	"BaseColor",
-	"Metallic",
-	"Roughness",
-	"Specular",
-]
 
 
 def handle_material_input(inputs_dict, node: ET.Element, iter):
 	check_close(node, iter)
 
-	input_id = node.tag
-	if input_id == "Input":
+	input_id = node.tag # handles cases where inputse are <0 exp=... />
+	if input_id == "Input": # handles cases where inputs are <Input Name=0 ... />
 		input_id = node.attrib["Name"]
-	else:
-		assert input_id == "Coordinates"
+	elif input_id == "Coordinates": # handles cases <Coordinaates ... />
 		input_id = "0"
+
+
+	assert(input_id is not None)
 
 	input_expression = int(node.attrib["expression"])
 	input_socket_idx = int(node.attrib.get("OutputIndex", 0))
@@ -495,6 +487,7 @@ def handle_material_input(inputs_dict, node: ET.Element, iter):
 def handle_pbrmaterial_input(material, node, iter):
 	mat_inputs = material["inputs"]
 	handle_material_input(mat_inputs, node, iter)
+
 
 def handle_pbrmat_exp_generic(node: ET.Element, iter):
 
@@ -578,6 +571,10 @@ def handle_pbrmaterial(uscene, node, iter):
 			"Expressions": handle_pbrmaterial_expressions,
 			"OpacityMaskClipValue": unhandled,
 			"ShadingModel": handle_pbrmaterial_value,
+			"BaseColor": handle_pbrmaterial_input,
+			"Roughness": handle_pbrmaterial_input,
+			"Metallic": handle_pbrmaterial_input,
+			"Normal": handle_pbrmaterial_input,
 		}
 		handler = filler_map.get(child_tag, unhandled)
 		if handler == unhandled:
@@ -916,6 +913,47 @@ def pbrmaterial_node_OneMinus(uscene, exp, node_tree):
 		},
 	}
 
+def pbrmaterial_node_AppendVector(uscene, exp, node_tree):
+	print("found appendvector:", exp)
+	node = node_tree.nodes.new("NodeReroute")
+	return {
+		"node": node,
+	}
+
+def pbrmaterial_node_FunctionCall(uscene, exp, node_tree):
+	print("found functioncall:", exp)
+	function = exp[1]["Function"]
+
+	node = None
+	inputs = None
+	if function == "/DatasmithBlenderContent/MaterialFunctions/RGB_To_BW":
+		node = node_tree.nodes.new("ShaderNodeRGBToBW")
+	elif function == "/DatasmithBlenderContent/MaterialFunctions/NormalStrength":
+		node = node_tree.nodes.new("ShaderNodeNormalMap")
+		inputs = {
+			"0": node.inputs["Strength"],
+			"1": node.inputs["Color"],
+		}
+	else:
+		node = node_tree.nodes.new("NodeReroute")
+
+	if inputs is None:
+		inputs = {
+			"0": node.inputs[0]
+		}
+
+	return {
+		"node": node,
+		"inputs": inputs
+	}
+
+def pbrmaterial_node_ComponentMask(uscene, exp, node_tree):
+	print("found componentmask:", exp)
+	node = node_tree.nodes.new("NodeReroute")
+	return {
+		"node": node,
+	}
+
 def pbrmaterial_node_Fresnel(uscene, exp, node_tree):
 	node = node_tree.nodes.new("ShaderNodeFresnel")
 	# in UE4 inputs are:
@@ -948,16 +986,19 @@ pbrmaterial_node_functions = {
 	"OneMinus": pbrmaterial_node_OneMinus,
 	"Fresnel": pbrmaterial_node_Fresnel,
 	"TextureCoordinate": pbrmaterial_node_TextureCoordinate,
+        "AppendVector": pbrmaterial_node_AppendVector,
+        "ComponentMask": pbrmaterial_node_ComponentMask,
+        "FunctionCall": pbrmaterial_node_FunctionCall,
 }
 
 def link_pbr_material(uscene, material):
-	log.debug("linking pbr material %s" % material["name"])
+	log.info("processing pbr material %s" % material["name"])
 
 	expressions = material["expressions"]
 	bf_nodes = material["bf_nodes"] = []
 	inputs = material["inputs"]
-	log.info("  expressions: ", expressions)
-	log.info("  inputs: ", inputs)
+	log.info("  expressions: %s", expressions)
+	log.info("  inputs: %s", inputs)
 	bl_mat = material["bl_mat"]
 	bl_mat.use_nodes = True
 	node_tree = bl_mat.node_tree
@@ -965,10 +1006,7 @@ def link_pbr_material(uscene, material):
 	for exp in expressions:
 		exp_type, exp_attrs, exp_inputs, exp_props = exp
 		node = None
-		sockets = {}
-		out_sockets = {}
-		log.debug("  creating expression '%s'" % exp_type)
-
+		log.debug("  creating node for expression '%s'", exp)
 
 		handler = pbrmaterial_node_functions.get(exp_type)
 		bf_node = None
@@ -987,6 +1025,8 @@ def link_pbr_material(uscene, material):
 			node.name = name
 			node.label = name
 
+	log.info("linking expressions pbr material %s" % material["name"])
+
 	for exp_idx, exp in enumerate(expressions):
 		# everything prefixed with "exp" is what comes from datasmith file
 		exp_type, exp_attrs, exp_inputs, exp_props = exp
@@ -998,15 +1038,16 @@ def link_pbr_material(uscene, material):
 		if target_node:
 			node, node_input_map, _ = target_node
 			if node_input_map:
-				log.debug("  linking expression '%s'" % exp_type)
+				log.debug("  linking expression '%s' node: %s", exp_type, target_node)
 
 				for exp_input_id, exp_from_socket in exp_inputs.items():
+					log.debug("    input %s expr %s", exp_input_id, exp_from_socket)
 					node_idx, socket_idx = exp_from_socket
 					origin_node = bf_nodes[node_idx]
 					incoming_socket = None
 					if origin_node:
 						incoming_node, _, incoming_out_sockets = origin_node
-						log.info("idx %d data %s" % (socket_idx, incoming_node))
+						log.debug("    idx %d data %s" % (socket_idx, incoming_node))
 						if incoming_out_sockets:
 							incoming_socket = incoming_out_sockets.get(socket_idx, None)
 						if incoming_socket is None:
@@ -1014,7 +1055,13 @@ def link_pbr_material(uscene, material):
 
 					if incoming_socket:
 						input_socket = node_input_map.get(exp_input_id)
-						node_tree.links.new(incoming_socket, input_socket)
+						# not guaranteed to exist:
+						# example: xml expression has 3 inputs but the node we spawned only has one
+						# common if a node isn't implemented, we use reroute
+						if input_socket:
+							node_tree.links.new(incoming_socket, input_socket)
+
+	log.info("linking outputs pbr material %s" % material["name"])
 
 	shading_model = material.get("ShadingModel")
 	if shading_model:
@@ -1032,14 +1079,32 @@ def link_pbr_material(uscene, material):
 			"Roughness": "Roughness",
 			"Specular": "Specular",
 			"Metallic": "Metallic",
+			"Normal": "Normal",
 		}
 		target_input_name = input_id_map.get(input_id, None)
 		if target_input_name:
-			from_node_idx, from_socket_idx = input_nodepath
+			node_idx, socket_idx = input_nodepath
 			input_socket = principled.inputs[target_input_name]
-			from_node = bf_nodes[from_node_idx][0]
-			from_socket = from_node.outputs[from_socket_idx]
-			node_tree.links.new(from_socket, input_socket)
+
+			if True:
+					origin_node = bf_nodes[node_idx]
+					incoming_socket = None
+					if origin_node:
+						incoming_node, _, incoming_out_sockets = origin_node
+						log.info("idx %d data %s" % (socket_idx, incoming_node))
+						if incoming_out_sockets:
+							incoming_socket = incoming_out_sockets.get(socket_idx, None)
+						if incoming_socket is None:
+							incoming_socket = incoming_node.outputs[socket_idx]
+
+					if incoming_socket:
+						#input_socket = node_input_map.get(exp_input_id)
+						node_tree.links.new(incoming_socket, input_socket)
+
+
+
+			#from_socket = from_node.outputs[from_socket_idx]
+			#node_tree.links.new(from_socket, input_socket)
 
 
 
