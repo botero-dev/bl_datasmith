@@ -242,13 +242,13 @@ def read_string(buffer):
 	string = buffer.read(string_size)
 	return string
 
-def load_udsmesh_file(mesh, node, iter):
+def fill_mesh_file(mesh, node, iter):
 	check_close(node, iter)
 	path = node.attrib["path"]
 	full_path = "%s/%s" % (import_ctx["dir_path"], path)
 	mesh["path"] = full_path
 
-def load_udsmesh_file_step2(mesh):
+def load_udsmesh_file(mesh):
 	full_path = mesh["path"]
 	with open(full_path, "rb") as f:
 
@@ -598,7 +598,7 @@ def handle_staticmesh(uscene, node, iter):
 
 	filler_map = {
 		"Material":  fill_mesh_material,
-		"file":      load_udsmesh_file,
+		"file":      fill_mesh_file,
 		# used to hint UE4 on mesh usage to calculate lightmap size
 		"Size":      ignore,
 		# Tells UE4 which mesh UV to use when generating the lightmap UVs
@@ -618,7 +618,7 @@ def handle_staticmesh(uscene, node, iter):
 	assert child == node
 	assert action == 'end'
 
-	load_udsmesh_file_step2(mesh)
+	load_udsmesh_file(mesh)
 
 	# all data should be loaded by now, so we just add/update the mesh
 	bl_mesh = bpy.data.meshes.new(mesh["name"])
@@ -665,9 +665,12 @@ def handle_staticmesh(uscene, node, iter):
 		uv_layer = bl_mesh.uv_layers.new()
 		uv_layer.data.foreach_set("uv", uv_set)
 
-	# not sure when is the best moment to call this
-	# TODO: use mesh normals
 	bl_mesh.update(calc_edges=True)
+
+	# Seems to work only after bl_mesh.update
+	normals = mesh["normals"]
+	normals = normals.reshape((-1, 3))
+	bl_mesh.normals_split_custom_set(normals)
 
 	mesh["bl_mesh"] = bl_mesh
 	log.debug(f"mesh: {mesh['name']}")
