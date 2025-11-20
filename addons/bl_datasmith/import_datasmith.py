@@ -392,6 +392,7 @@ def handle_texture(uscene, node, iter):
 		"name": texture_name,
 		"filename": filename,
 		"path": path,
+		"mode": node.attrib.get("texturemode")
 	}
 	for action, child in iter:
 		if action == 'end':
@@ -781,7 +782,10 @@ def link_texture(uscene, texture):
 	log.info("linking texture %s %s" % (tex_name, full_path))
 	try:
 		image = bpy.data.images.load(full_path, check_existing=True)
-	except:
+		tex_mode = texture["mode"]
+		if tex_mode == "1" or tex_mode == "3":
+			image.colorspace_settings.name = "Non-Color"
+	except Exception:
 		log.error("texture not found: %s %s" % (tex_name, full_path))
 		image = None
 	texture["image"] = image
