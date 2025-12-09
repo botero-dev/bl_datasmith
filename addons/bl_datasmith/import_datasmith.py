@@ -1109,7 +1109,7 @@ def link_pbr_material(uscene, material):
 		input_id_map = {
 			"BaseColor": "Base Color",
 			"Roughness": "Roughness",
-			"Specular": "Specular",
+			"Specular": "Specular IOR Level",
 			"Metallic": "Metallic",
 			"Normal": "Normal",
 		}
