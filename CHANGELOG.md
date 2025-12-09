@@ -1,6 +1,19 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [11] 2025-12-10
+
++ Added support for UE 5.6 and 5.7.
++ Added support for Blender 5.0.
++ Added basic support for importing Datasmith files.
+
+* Rewrote material exporting to use a generic structure.
+* Refactored Blender and UE plugins sto export colors from Blender as float4
+  values. This should match better the Blender internals and fixes ambiguous
+  cases where conversions appended an alpha channel too many times.
+
+- Removed support for UE 4.27, 5.0, 5.1, 5.2, 5.3
+
 
 ## [10] 2025-01-04
 + Added support for UE 5.5
@@ -21,7 +34,7 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 ### Fixed
-* Export metadata is now a flag, off by default, to help in case other addons store info there.
+* Export metadata is now a flag, off by default, to help in case other add-ons store info there.
 * Libraries with long file paths are now referenced by the blend file name only.
 
 ## [1.0.3] 2020-08-19

@@ -1,68 +1,70 @@
 Blender IO Datasmith
 ====================
 
-This repo contains a Blender addon to export Epic Games Datasmith format from
-Blender, and a corresponding Plugin for Unreal Engine to support some features
-that Blender can export into the Datasmith format.
+This repo contains a Blender add-on to import and export Epic Games Datasmith
+format from Blender, and a corresponding plugin for Unreal Engine to support
+some features that Blender can export into the Datasmith format.
 
 Installation
 ------------
-The Blender addon is provided free of charge to download from the GitHub
-releases website. Additionally, you can pull the entire repository and add it
-to the Blender scripts search paths. This will work seamlessly as Blender looks
-up for a folder called "addons", and loads the modules from there.
 
-The Unreal Engine plugin is provided as source code only. If you're interested
-in trying it out, you can compile it yourself or you can acquire it from the
-Gumroad Sale Page
+Check for the latest version in the Releases section in Github. You can download
+packaged zip files for the Blender add-on and the Unreal Engine plugin. 
 
+To install the Blender add-on, you can download and add it to Blender through the
+preferences window. Alternatively you can download the repo and add the root of
+it as a source of scripts within Blender preferences. This way is recommended
+for development to make it easier to work on the add-on.
 
+The Unreal Engine plugin should be downloaded for the relevant version and
+placed in the Plugins folder of your project. You can also place it in the UE
+Engine folder, but this is not widely tested.
 
-This folder wraps the build environment for the Vertexforge project. It has
-scripts to place them in specific places and deal with compiling and
-packaging them. The scripts are located in the unsurprisingly named `scripts`
-folder.
+Usage
+-----
 
-A full deployment would follow `scripts/all.ps1`
+To use the plugin, just browse in the Blender import/export menus and select the
+Datasmith format.
 
-Working
--------
-
-Blender plugin source code is at the folder `addons/bl_datasmith`. This
-accomodation allows us to set the repo root folder as a scripts source folder in
-Blender.
+IMPORTANT: From Unreal, you can import the datasmith file normally, but you need
+to fix the datasmith_curves to NOT use compression. You can do this in to ways:
+- Find the file in the Textures folder that was created when importing the
+  files. Edit the texture type to use HDR uncompressed.
+- Use the Dataprep asset included in the plugin folder.
 
 
 Building
 --------
 
-`scripts/export_bl.ps1` creates the `bl_datasmith-blender.zip` file that can be
-loaded in blender as an addon.
-
-`scripts/build_all_win.ps1` builds the UE plugin with many engine versions.
-`scripts/build_all_mac.sh` does the same in Mac.
-
-you can build the plugin in remote hosts and then pull it back with the
-`assemble.sh` or `assemble.ps1` scripts.
+For additional information on how to build and package the project, check
+<BUILDING.md>
 
 
-The `scripts/package_epic.ps1` makes a zip package that includes the UE plugin,
-and the Blender addon in another zip file
-
-The `scripts/package_standalone.ps1` makes a folder with many zip files with the
-plugin built for many UE versions. also a separate download of the Blender
-plugin is provided.
-
-
-Testing
+Support
 -------
 
-The `scripts/get_blender.ps1` script downloads blender versions to the `bin`
-folder.
+To support the project, please consider joining as a Github Sponsor.
+
+To get support for the plugin, join the [https://discord.gg/JnuAJcEwCb](Discord
+server).
 
 
-The `demos` folder is created from the `scripts/run_tests.ps1` script too. It
-uses SVN to download the demo files from a local network server.
+License
+-------
 
-the `startup` folder also holds some utility that helps us debug stuff in
-blender
+Copyright (c) 2023-2025 Andrés Botero
+
+This project contains files licensed under multiple licenses:
+
+The contents of the `addons/bl_datasmith` directory are licensed under the
+Affero GNU General Public License (AGPL). You will find a full copy of the
+license in that folder and software distributions, but these are the main takeaways:
+
+- All kind of redistribution of the software should also redistribute the source
+  code of the add-on and linked software.
+- This also includes cases where the software is distrubited by network usage.
+
+
+The contents of the `ue_template/Plugins/DatasmithBlenderContent` directory are
+licensed under the MIT License. You will find a copy of the license in the
+directory and in software distributions.

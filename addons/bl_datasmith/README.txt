@@ -1,9 +1,7 @@
 Blender to Unreal Exporter via Datasmith format.
 ================================================
 
-Thanks for your support.
-
-This is a Blender addon that lets you export to Datasmith format.
+This is a Blender add-on that lets you import and export to Datasmith format.
 
 This can be installed in two ways:
 
@@ -11,9 +9,9 @@ This can be installed in two ways:
   that contains this and the other code (python) files.
 
 - Copy the *folder* that holds these files from the ZIP to the directory where
-  your Blender installation scans for addons (make sure it is inside the
-  `addons` folder)
+  your Blender installation scans for add-ons (make sure it is inside the
+  `add-ons` folder)
 
-Then, search and enable from the addons list.
+Then, search and enable "Unreal Datasmith" from the add-ons list.
 
 Copyright Andrés Botero 2023

@@ -1,12 +1,9 @@
-Blender to Unreal Exporter via Datasmith format.
-================================================
+Blender Datasmith Additions for Unreal Engine
+=============================================
 
-Thanks for your support.
-
-This is the UE companion plugin to the Blender to Unreal Exporter addon.
-
-This plugin exposes implementations of Blender material nodes and other features
-to improve the quality when importing Datasmith scenes exported from Blender.
+This plugin improves Unreal Engine's support for importing Datasmith files
+exported from Blender. It does this by providing implementations of Blender
+material nodes and other features native to Blender.
 
 You can also use these nodes directly if desired.
 
@@ -18,8 +15,11 @@ This can be installed in two ways:
 - You can copy this plugin into the Plugins folder of the Unreal Engine
   installation directory.
 
-  If you install the plugin this way, you won't need to add it to the projects
-  to enable it, but other people that work on the projects will need to install
-  it into their engines as well.
+If you install the plugin in the engine directory, you won't need to add it to
+the projects to enable it, but other people that work on the projects will need
+to install it into their engines as well.
 
-Copyright Andrés Botero 2023
+Visit https://github.com/0xafbf/bl_datasmith for updates and more information
+about the plugin.
+
+Copyright Andrés Botero 2023-2025

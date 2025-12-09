@@ -3,10 +3,12 @@
 # Copyright 2024 Andrés Botero 
 
 # This is mostly a guide to run manually. check all.ps1 for better guide
+# I usually run this in a linux env, so
+
 echo "all.sh"
 set -euv
 
 ./scripts/export_bl.sh
+./scripts/build_all_linux.sh
 ./scripts/assemble.sh
-# & "$base_path/scripts/package_epic.ps1"
-./scripts/package_gumroad.sh
+./scripts/package_standalone.sh

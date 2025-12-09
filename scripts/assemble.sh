@@ -27,7 +27,7 @@ echo "Executing MacOS code"
 ssh "$prefix_mac" sh "$script_filename" "$branch_name"
 
 echo "Pulling MacOS artifact"
-scp "${prefix_mac}:tmp/vertexforge_build/build/mac.zip" "build/mac.zip"
+scp "${prefix_mac}:tmp/bl_datasmith_build/build/mac.zip" "build/mac.zip"
 
 
 prefix_win="${username}@${host_win}"
@@ -40,6 +40,6 @@ echo "Executing Windows code"
 ssh "$prefix_win" powershell "./${script_filename}" "$branch_name"
 
 echo "Pulling Windows artifact"
-scp -X buffer=204800 "${prefix_win}:/tmp/vertexforge_build/build/win.zip" "build/win.zip"
+scp -X buffer=204800 "${prefix_win}:/tmp/bl_datasmith_build/build/win.zip" "build/win.zip"
 
 # the buffer=204800 is to work around a bug in OpenSSH
