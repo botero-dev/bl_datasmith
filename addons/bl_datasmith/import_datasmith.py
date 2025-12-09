@@ -358,7 +358,6 @@ def load_udsmesh_file(mesh):
 		assert num_normals == num_wedges
 
 		normals = np.frombuffer(f.read(num_wedges * 4 * 3), dtype=np.float32)
-		normals = normals.reshape((-1, 3))
 		mesh["normals"] = normals
 
 		# WedgeTexCoords
@@ -596,7 +595,7 @@ def handle_pbrmaterial(uscene, node, iter):
 	uscene["materials"][material_name] = material
 
 
-def handle_staticmesh(uscene, node, iter):
+def handle_staticmesh(uscene, node, xml_iter):
 	mesh_name = node.attrib["name"]  # see also: label
 	mesh = {
 		"name": mesh_name,
@@ -617,12 +616,12 @@ def handle_staticmesh(uscene, node, iter):
 		# maybe we can use this hash to skip model importing.
 		"Hash": ignore,
 	}
-	for action, child in iter:
+	for action, child in xml_iter:
 		if action == "end":
 			assert child == node
 			break
 		handler = filler_map.get(child.tag, unhandled)
-		handler(mesh, child, iter)
+		handler(mesh, child, xml_iter)
 	assert child == node
 	assert action == "end"
 
@@ -635,7 +634,6 @@ def handle_staticmesh(uscene, node, iter):
 
 	# flip in Y axis
 	verts[1::3] *= -1
-	# TODO: tunable to apply Y-axis mirror in mesh or in object
 
 	num_vertices = len(verts) // 3
 	bl_mesh.vertices.add(num_vertices)
@@ -644,7 +642,6 @@ def handle_staticmesh(uscene, node, iter):
 	num_tris = num_indices // 3
 	bl_mesh.polygons.add(num_tris)
 
-	num_mats = len(mesh["materials"])
 	for mat in mesh["materials"]:
 		bl_mesh.materials.append(None)
 
@@ -674,16 +671,25 @@ def handle_staticmesh(uscene, node, iter):
 		uv_layer = bl_mesh.uv_layers.new()
 		uv_layer.data.foreach_set("uv", uv_set)
 
-	bl_mesh.update(calc_edges=True)
-
-	# Seems to work only after bl_mesh.update
 	normals = mesh["normals"]
-	normals = normals.reshape((-1, 3))
-	bl_mesh.normals_split_custom_set(normals)
+
+	bl_mesh.attributes.new("temp_custom_normals", 'FLOAT_VECTOR', 'CORNER')
+	bl_mesh.attributes["temp_custom_normals"].data.foreach_set("vector", normals)
+
+	# can change mesh loop count
+	bl_mesh.validate(clean_customdata=False)
+
+	fixed_nors = np.empty(len(bl_mesh.loops) * 3, dtype=np.float32)
+	bl_mesh.attributes["temp_custom_normals"].data.foreach_get("vector", fixed_nors)
+	fixed_nors[1::3] *= -1
+	bl_mesh.attributes.remove(bl_mesh.attributes["temp_custom_normals"])
+
+	bl_mesh.normals_split_custom_set(tuple(zip(*(iter(fixed_nors.data),) * 3)))
 
 	mesh["bl_mesh"] = bl_mesh
 	log.debug(f"mesh: {mesh['name']}")
 	uscene["meshes"][mesh_name] = mesh
+
 	return mesh
 
 
