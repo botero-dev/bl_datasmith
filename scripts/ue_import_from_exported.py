@@ -3,4 +3,4 @@
 
 import blender_datasmith
 
-blender_datasmith.import_csv_scenes("c:/abotero/vertexforge/export/demos/report.csv")
+blender_datasmith.import_csv_scenes("export/demos/report.csv")

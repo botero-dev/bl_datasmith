@@ -57,7 +57,7 @@ class ExportDatasmith(types.Operator, io_utils.ExportHelper):
 			name="All materials as two-sided",
 			description="Adds a flag to all materials to export as two-sided.\n "
 				"This is less optimal but matches better Blender's default behaviour.\n"
-				"Materials with Backface Culling are exported one-sided",
+				"Materials with explicit Backface Culling are always exported one-sided",
 			default=True,
 		)
 	export_animations: props.BoolProperty(
@@ -67,8 +67,8 @@ class ExportDatasmith(types.Operator, io_utils.ExportHelper):
 		)
 	export_metadata: props.BoolProperty(
 			name="Write metadata",
-			description="(maybe broken) Writes custom properties of objects and meshes as metadata. "
-				"It may be useful to disable this when using certain addons",
+			description="Writes custom properties of objects and meshes as metadata. "
+				"It may cause conflicts with data of certain add-ons",
 			default=False,
 		)
 	skip_textures: props.BoolProperty(

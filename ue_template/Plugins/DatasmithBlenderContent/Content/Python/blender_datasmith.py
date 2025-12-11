@@ -1,5 +1,7 @@
 # blender_datasmith.py
-# Copyright Andrés Botero 2023
+# Copyright Andrés Botero 2023-2025
+#
+# Experiment to batch-import many scenes from a csv file in unreal with datasmith api
 
 import unreal
 import os

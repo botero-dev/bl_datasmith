@@ -4,7 +4,7 @@ Building bl_datasmith
 Building
 --------
 
-`scripts/all.ps1` shows the simplest steps to make a full build.
+`scripts/all.sh` shows the simplest steps to make a full build.
 
 `scripts/export_bl.sh` creates the `bl_datasmith-blender.zip` file that can be
 loaded in blender as an add-on.
@@ -14,11 +14,11 @@ These commands build the plugin for many versions of a specific OS in one run:
 - `scripts/build_all_mac.sh`
 - `scripts/build_all_linux.sh`
 
-you can build the plugin in remote hosts and then pull it back with the
-`assemble.sh` or `assemble.ps1` scripts.
+After building the plugin in remote hosts, pull it back with `assemble.sh`.
 
-The `scripts/package_epic.ps1` makes a zip package that includes the UE plugin,
-and the Blender add-on in another zip file
+
+Packaging
+---------
 
 The `scripts/package_standalone.ps1` makes a folder with many zip files with the
 plugin built for many UE versions. also a separate download of the Blender

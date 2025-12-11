@@ -13,7 +13,7 @@ log = logging.getLogger("bl_datasmith")
 
 
 DATASMITH_TEXTURE_SIZE = 1024
-
+BLENDER_CURVES_NAME = "blender_curves"
 
 # only functions you need to care about from the outside
 
@@ -30,10 +30,10 @@ def collect_all_materials(unique_materials, textures_dict, config_always_twoside
 
 	if material_curves_count != 0:
 		curves_image = None
-		if "datasmith_curves" in bpy.data.images:
-			curves_image = bpy.data.images["datasmith_curves"]
+		if BLENDER_CURVES_NAME in bpy.data.images:
+			curves_image = bpy.data.images[BLENDER_CURVES_NAME]
 		else:
-			curves_image = bpy.data.images.new("datasmith_curves", DATASMITH_TEXTURE_SIZE, DATASMITH_TEXTURE_SIZE, alpha=True, float_buffer=True)
+			curves_image = bpy.data.images.new(BLENDER_CURVES_NAME, DATASMITH_TEXTURE_SIZE, DATASMITH_TEXTURE_SIZE, alpha=True, float_buffer=True)
 			curves_image.colorspace_settings.is_data = True
 			curves_image.file_format = "OPEN_EXR"
 
@@ -1852,7 +1852,7 @@ def exp_curvergb(socket, exp_list):
 	curve_idx = exp_scalar(idx, exp_list)
 	vertical_res = exp_scalar(DATASMITH_TEXTURE_SIZE, exp_list)  # curves texture size
 
-	texture = exp_texture_object("datasmith_curves", exp_list)
+	texture = exp_texture_object(BLENDER_CURVES_NAME, exp_list)
 
 	lookup = Node("FunctionCall", {"Function": op_custom_functions["CURVE_RGB"]})
 	lookup.push(exp_input("0", color))
@@ -2084,7 +2084,7 @@ def exp_color_ramp(socket, exp_list):
 	curve_idx = exp_scalar(idx, exp_list)
 
 	vertical_res = exp_scalar(DATASMITH_TEXTURE_SIZE, exp_list)  # curves texture size
-	texture = exp_texture_object("datasmith_curves", exp_list)
+	texture = exp_texture_object(BLENDER_CURVES_NAME, exp_list)
 
 	lookup = Node("FunctionCall", {"Function": op_custom_functions["COLOR_RAMP"]})
 	lookup.push(exp_input("0", level))

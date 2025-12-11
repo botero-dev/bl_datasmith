@@ -27,7 +27,9 @@ To use the plugin, just browse in the Blender import/export menus and select the
 Datasmith format.
 
 IMPORTANT: From Unreal, you can import the datasmith file normally, but you need
-to fix the datasmith_curves to NOT use compression. You can do this in to ways:
+to fix the blender_curves asset to NOT use compression. You can do this in to
+ways:
+
 - Find the file in the Textures folder that was created when importing the
   files. Edit the texture type to use HDR uncompressed.
 - Use the Dataprep asset included in the plugin folder.
@@ -43,7 +45,8 @@ For additional information on how to build and package the project, check
 Support
 -------
 
-To support the project, please consider joining as a Github Sponsor.
+To support the project, please consider joining as a Github Sponsor clicking the
+button in the sidebar.
 
 To get support for the plugin, join the [https://discord.gg/JnuAJcEwCb](Discord
 server).
