@@ -1,7 +1,3 @@
-// Adapted by Andrés Botero from Blender source code
-// as such, this file is licensed under GPL.
-
-
 #pragma once
 #include "BlenderCommonHash.ush"
 #include "BlenderCommonMathUtils.ush"

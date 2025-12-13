@@ -22,4 +22,4 @@ to install it into their engines as well.
 Visit https://github.com/0xafbf/bl_datasmith for updates and more information
 about the plugin.
 
-Copyright Andrés Botero 2023-2025
+Copyright 2023-2025 Andrés Botero

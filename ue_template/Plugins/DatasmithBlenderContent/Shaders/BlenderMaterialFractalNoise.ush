@@ -1,11 +1,7 @@
-// Adapted by Andrés Botero from Blender source code
-// as such, this file is licensed under GPL.
-
 #pragma once
 #include "BlenderCommonHash.ush"
 #include "BlenderMaterialNoise.ush"
 
-/* The fractal_noise functions are all exactly the same except for the input type. */
 float fractal_noise(float p, float octaves, float roughness)
 {
   float fscale = 1.0;
@@ -34,7 +30,6 @@ float fractal_noise(float p, float octaves, float roughness)
   }
 }
 
-/* The fractal_noise functions are all exactly the same except for the input type. */
 float fractal_noise(float2 p, float octaves, float roughness)
 {
   float fscale = 1.0;
@@ -63,7 +58,6 @@ float fractal_noise(float2 p, float octaves, float roughness)
   }
 }
 
-/* The fractal_noise functions are all exactly the same except for the input type. */
 float fractal_noise(float3 p, float octaves, float roughness)
 {
   float fscale = 1.0;
@@ -92,7 +86,6 @@ float fractal_noise(float3 p, float octaves, float roughness)
   }
 }
 
-/* The fractal_noise functions are all exactly the same except for the input type. */
 float fractal_noise(float4 p, float octaves, float roughness)
 {
   float fscale = 1.0;

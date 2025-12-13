@@ -1,44 +1,14 @@
 #pragma once
 #include "BlenderCommonHash.ush"
 
-/* clang-format off */
 #define FLOORFRAC(x, x_int, x_fract) { float x_floor = floor(x); x_int = int(x_floor); x_fract = x - x_floor; }
-/* clang-format on */
 
-/* Bilinear Interpolation:
- *
- * v2          v3
- *  @ + + + + @       y
- *  +         +       ^
- *  +         +       |
- *  +         +       |
- *  @ + + + + @       @------> x
- * v0          v1
- */
 float bi_mix(float v0, float v1, float v2, float v3, float x, float y)
 {
   float x1 = 1.0 - x;
   return (1.0 - y) * (v0 * x1 + v1 * x) + y * (v2 * x1 + v3 * x);
 }
 
-/* Trilinear Interpolation:
- *
- *   v6               v7
- *     @ + + + + + + @
- *     +\            +\
- *     + \           + \
- *     +  \          +  \
- *     +   \ v4      +   \ v5
- *     +    @ + + + +++ + @          z
- *     +    +        +    +      y   ^
- *  v2 @ + +++ + + + @ v3 +       \  |
- *      \   +         \   +        \ |
- *       \  +          \  +         \|
- *        \ +           \ +          +---------> x
- *         \+            \+
- *          @ + + + + + + @
- *        v0               v1
- */
 float tri_mix(float v0,
               float v1,
               float v2,
@@ -230,9 +200,6 @@ float noise_perlin(float4 vec)
   return r;
 }
 
-/* Remap the output of noise to a predictable range [-1, 1].
- * The scale values were computed experimentally by the OSL developers.
- */
 float noise_scale1(float result)
 {
   return 0.2500 * result;
@@ -252,8 +219,6 @@ float noise_scale4(float result)
 {
   return 0.8344 * result;
 }
-
-/* Safe Signed And Unsigned Noise */
 
 float snoise(float p)
 {

@@ -1,5 +1,6 @@
-# Datasmith exporter for Blender
-# Copyright 2018-2022 Andrés Botero
+# SPDX-FileCopyrightText: 2018-2025 Andrés Botero
+# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-FileName: data_types.py
 
 invalid_chars = [
 	" ",  # ue4 doesn't like spaces in filenames, better just reject them everywhere

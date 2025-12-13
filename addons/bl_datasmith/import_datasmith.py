@@ -1,4 +1,6 @@
-# Copyright Andrés Botero 2021
+# SPDX-FileCopyrightText: 2025 Andrés Botero
+# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-FileName: import_datasmith.py
 
 import bpy
 import time
@@ -13,15 +15,17 @@ import xml.etree.ElementTree as ET
 
 log = logging.getLogger("bl_datasmith")
 
-
-matrix_normals = [
-	[1, 0, 0],
-	[0, -1, 0],
-	[0, 0, 1],
-]
-
 # used for lights and cameras, whose forward is (0, 0, -1) and its right is (1, 0, 0)
-matrix_forward = Matrix(((0, 1, 0, 0), (0, 0, -1, 0), (-1, 0, 0, 0), (0, 0, 0, 1)))
+matrix_forward = Matrix(
+	(
+		(0, 1, 0, 0),
+		(0, 0, -1, 0),
+		(-1, 0, 0, 0),
+		(0, 0, 0, 1),
+	)
+)
+
+matrix_forward_inv = matrix_forward.inverted()
 
 
 def handle_transform(node, iter):
@@ -1196,18 +1200,6 @@ datasmith_transform_matrix[1][1] *= -1.0
 
 ue_transform_mat = datasmith_transform_matrix
 ue_transform_mat_inv = ue_transform_mat.inverted()
-
-# used for lights and cameras, whose forward is (0, 0, -1) and its right is (1, 0, 0)
-matrix_forward = Matrix(
-	(
-		(0, 1, 0, 0),
-		(0, 0, -1, 0),
-		(-1, 0, 0, 0),
-		(0, 0, 0, 1),
-	)
-)
-
-matrix_forward_inv = matrix_forward.inverted()
 
 
 def link_actor(uscene, actor, in_parent=None):

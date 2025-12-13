@@ -1,5 +1,6 @@
-# Datasmith exporter for Blender
-# Copyright 2018-2022 Andrés Botero
+# SPDX-FileCopyrightText: 2018-2025 Andrés Botero
+# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-FileName: export_datasmith.py
 
 import logging
 import math

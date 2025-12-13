@@ -1,4 +1,6 @@
-// Copyright Andrés Botero. All Rights Reserved.
+// SPDX-FileCopyrightText: 2025 Andrés Botero
+// SPDX-License-Identifier: MIT
+// SPDX-FileName: DatasmithBlenderContent.Build.cs
 
 using UnrealBuildTool;
 

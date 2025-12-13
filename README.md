@@ -61,7 +61,8 @@ This project contains files licensed under multiple licenses:
 
 The contents of the `addons/bl_datasmith` directory are licensed under the
 Affero GNU General Public License (AGPL). You will find a full copy of the
-license in that folder and software distributions, but these are the main takeaways:
+license in that folder and packaged distributions, but these are the main
+takeaways:
 
 - All kind of redistribution of the software should also redistribute the source
   code of the add-on and linked software.
@@ -70,4 +71,4 @@ license in that folder and software distributions, but these are the main takeaw
 
 The contents of the `ue_template/Plugins/DatasmithBlenderContent` directory are
 licensed under the MIT License. You will find a copy of the license in the
-directory and in software distributions.
+directory and in packaged distributions.

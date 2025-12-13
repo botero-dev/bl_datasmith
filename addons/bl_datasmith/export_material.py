@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2025 Andrés Botero
+# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-FileName: export_material.py
+
 import math
 import logging
 
