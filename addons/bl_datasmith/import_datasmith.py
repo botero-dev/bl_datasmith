@@ -1,15 +1,11 @@
 # Copyright Andrés Botero 2021
 
 import bpy
-import idprop
-import bmesh
-import math
-import os
 import time
-import hashlib
-import shutil
+import struct
+
 from os import path
-from mathutils import Matrix, Vector, Euler, Quaternion
+from mathutils import Matrix, Quaternion
 
 import logging
 import numpy as np
@@ -29,7 +25,9 @@ matrix_forward = Matrix(((0, 1, 0, 0), (0, 0, -1, 0), (-1, 0, 0, 0), (0, 0, 0, 1
 
 
 def handle_transform(node, iter):
-	p = lambda x: float(node.attrib[x])
+	def p(x):
+		float(node.attrib[x])
+
 	loc = (p("tx"), p("ty"), p("tz"))
 	rot = (p("qw"), p("qx"), p("qy"), p("qz"))
 	scale = (p("sx"), p("sy"), p("sz"))
@@ -64,15 +62,15 @@ def ignore(_ctx, node, iter):
 
 def handle_actor_children(target, node, iter):
 	# strangely, an actor 'visible' flag is in its children node
-	visible_str = node.attrib["visible"]
-	visible = visible_str in ["true", "True", "TRUE", "1"]
+	# visible_str = node.attrib["visible"]
+	# visible = visible_str in ["true", "True", "TRUE", "1"]
 	# we also have "selector" (bool) and "selection" (int) which we won't check for now
 
 	for action, child in iter:
 		if action == "end":
 			break
 		actor_child = handle_actor_common(None, child, iter)
-		assert actor_child != None
+		assert actor_child is not None
 		target["children"].append(actor_child)
 
 	assert child == node
@@ -98,7 +96,7 @@ def fill_value_str(target, node, iter):
 def fill_light_color(target, node, iter):
 	check_close(node, iter)
 	attr = node.attrib
-	use_temp = attr["usetemp"]
+	# use_temp = attr["usetemp"]
 	target["color"] = (float(attr["R"]), float(attr["G"]), float(attr["B"]))
 
 
@@ -132,9 +130,9 @@ def fill_keyvalueproperty(target, node, iter):
 	prop_type = node.attrib["type"]
 
 	parser = parse_kvp.get(prop_type)
-	if parser == None:
+	if parser is None:
 		log.error(f"unable to find parser for {prop_type}")
-	assert parser != None
+	assert parser is not None
 	target[prop_name] = parser(node.attrib["val"])
 
 
@@ -142,7 +140,10 @@ def fill_transform(target, node, iter):
 	check_close(node, iter)
 
 	attr = node.attrib
-	p = lambda x: float(attr[x])
+
+	def p(x):
+		float(attr[x])
+
 	# we manually set the Y coordinate to negative
 	loc = (p("tx"), p("ty"), p("tz"))
 	rot = (p("qw"), p("qx"), p("qy"), p("qz"))
@@ -234,7 +235,7 @@ def fill_mesh_material(mesh, node, iter):
 	id = node.attrib["id"]
 	name = node.attrib["name"]
 	materials = mesh["materials"]
-	num_materials = len(materials)
+	# num_materials = len(materials)
 	id_as_int = int(id)
 	materials_lookup = mesh["materials_inv"]
 	if id_as_int in materials_lookup:
@@ -243,9 +244,6 @@ def fill_mesh_material(mesh, node, iter):
 	else:
 		materials_lookup[id_as_int] = len(materials)
 		materials.append((id, name))
-
-
-import struct
 
 
 # don't like this much, maybe we should benchmark specifying sizes directly
@@ -276,8 +274,8 @@ def load_udsmesh_file(mesh):
 		# log.debug(f"at {f.tell()}:")
 
 		file_start = f.tell()
-		name = read_string(f)
-		# log.debug(f"udsmesh name:{name} version:{version} size:{file_size}")
+		_name = read_string(f)
+		# log.debug(f"udsmesh name:{_name} version:{version} size:{file_size}")
 		# log.debug(f"at {f.tell()}:")
 
 		# this seems to be UDatasmithMesh
@@ -308,8 +306,8 @@ def load_udsmesh_file(mesh):
 		mesh_size, mesh_size_2 = unpack_from_file(8, "<II", f)
 		assert mesh_size == mesh_size_2
 
-		unknown_b = unpack_from_file(8, "<II", f)
-		log.debug(f"unknown_b {unknown_b}")
+		_unknown_b = unpack_from_file(8, "<II", f)
+		# log.debug(f"unknown_b {unknown_b}")
 		# assert unknown_b[0] in (159, 160, 161)
 		# assert unknown_b[1] == 0
 
@@ -385,7 +383,7 @@ def load_udsmesh_file(mesh):
 		assert mesh_size == mesh_calculated_size
 
 		# FRawMeshBulkData has a GUID (16 bytes) and bGuidIsHash (4 bytes)
-		unknown_c = f.read(20)
+		_unknown_c = f.read(20)
 		# log.debug(f"unknown_c {unknown_c}")
 		# assert b'\x00' * 20 == unknown_c
 
@@ -673,7 +671,7 @@ def handle_staticmesh(uscene, node, xml_iter):
 
 	normals = mesh["normals"]
 
-	bl_mesh.attributes.new("temp_custom_normals", 'FLOAT_VECTOR', 'CORNER')
+	bl_mesh.attributes.new("temp_custom_normals", "FLOAT_VECTOR", "CORNER")
 	bl_mesh.attributes["temp_custom_normals"].data.foreach_set("vector", normals)
 
 	# can change mesh loop count
@@ -1283,7 +1281,6 @@ def load(context, kwargs, file_path):
 	log.info(f"args: {kwargs}")
 	dir_path = path.dirname(file_path)
 	import_ctx["dir_path"] = dir_path
-	indent = ""
 	with open(file_path, encoding="utf-8") as f:
 		iter = ET.iterparse(f, events=("start", "end"))
 		handle_scene(iter, dir_path)

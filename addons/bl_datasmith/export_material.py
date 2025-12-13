@@ -516,7 +516,7 @@ def get_expression(field, exp_list, force_default=False, skip_default_warn=False
 
 		elif field.type == "RGBA":
 			if other_output.type == "VECTOR":
-				alpha = exp_scalar(1, exp_list) # Don't know if its better to use 0 or 1 here
+				alpha = exp_scalar(1, exp_list)  # Don't know if its better to use 0 or 1 here
 				n = Node("AppendVector")
 				push_exp_input(n, "0", return_exp)
 				push_exp_input(n, "1", alpha)
@@ -950,7 +950,7 @@ def exp_attribute(socket, exp_list):
 	elif socket.name == "Vector":
 		return {"expression": exp}
 
-	else: # if socket.name == "Color":
+	else:  # if socket.name == "Color":
 		append = Node("AppendVector")
 		push_exp_input(append, "0", exp, 0)
 		push_exp_input(append, "1", exp, 4)
@@ -1955,7 +1955,6 @@ def exp_normal_map(socket, exp_list):
 	return {"expression": exp_list.push(node_strength)}
 
 
-
 VECT_TRANSFORM_TYPE = ("POINT", "VECTOR", "NORMAL")
 
 VECT_TRANSFORM_RENAME_MAP = {
@@ -2097,6 +2096,7 @@ def exp_color_ramp(socket, exp_list):
 
 MAT_FUNC_MAKE_FLOAT3 = "/Engine/Functions/Engine_MaterialFunctions02/Utility/MakeFloat3"
 
+
 @blender_node("COMBXYZ")
 def exp_make_vec3(socket, exp_list):
 	node = socket.node
@@ -2108,6 +2108,8 @@ def exp_make_vec3(socket, exp_list):
 
 
 MAT_FUNC_COMBINE_RGB = "/DatasmithBlenderContent/MaterialFunctions/CombineRGB"
+
+
 @blender_node("COMBRGB")
 def exp_combine_rgb(socket, exp_list):
 	node = socket.node
@@ -2168,6 +2170,7 @@ def exp_break_vec3(socket, exp_list):
 
 NODE_BREAK_RGB_OUTPUTS = ("R", "G", "B")
 MAT_FUNC_SEPRGB = "/DatasmithBlenderContent/MaterialFunctions/SeparateRGB"
+
 
 @blender_node("SEPRGB")
 def exp_seprgb(socket, exp_list):
