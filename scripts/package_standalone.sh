@@ -20,14 +20,14 @@ echo unzip build/mac.zip -d build/mac
 unzip build/mac.zip -d build/mac >> /dev/null
 chmod -R u+X "build/mac"
 
-release_path="export/standalone"
-rm -rf "$release_path"
-mkdir -p "$release_path"
+export_base_path="export"
+rm -rf "$export_base_path"
+mkdir -p "$export_base_path"
 
 product_name="bl_datasmith"
 monotonic="$BUILD_NUMBER"
 
-blender_export_path="$export_path/$product_name-$monotonic-blender.zip"
+blender_export_path="$export_base_path/$product_name-$monotonic-blender.zip"
 cp "build/$product_name-blender.zip" "$blender_export_path"
 
 engine_versions="UE_5.4 UE_5.5 UE_5.6 UE_5.7"
@@ -37,7 +37,7 @@ base=$(pwd)
 for engine_version in $engine_versions; do
     cd "$base"
     echo "Exporting for $engine_version"
-    export_path="$release_path/$engine_version"
+    export_path="$export_base_path/$engine_version"
 
     rm -rf "$export_path"
 
