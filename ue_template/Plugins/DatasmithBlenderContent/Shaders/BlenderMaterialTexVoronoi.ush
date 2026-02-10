@@ -1,6 +1,27 @@
+// Adapted by Andrés Botero from Blender source code
+// as such, this file is licensed under GPL.
+
 #pragma once
 #include "BlenderCommonHash.ush"
 #include "BlenderCommonMathUtils.ush"
+
+/*
+ * Original code is under the MIT License, Copyright (c) 2013 Inigo Quilez.
+ *
+ * Smooth Voronoi:
+ *
+ * - https://wiki.blender.org/wiki/User:OmarSquircleArt/GSoC2019/Documentation/Smooth_Voronoi
+ *
+ * Distance To Edge based on:
+ *
+ * - https://www.iquilezles.org/www/articles/voronoilines/voronoilines.htm
+ * - https://www.shadertoy.com/view/ldl3W8
+ *
+ * With optimization to change -2..2 scan window to -1..1 for better performance,
+ * as explained in https://www.shadertoy.com/view/llG3zy.
+ */
+
+/* **** 1D Voronoi **** */
 
 float voronoi_distance(float a, float b, float metric, float exponent)
 {
@@ -225,6 +246,8 @@ void node_tex_voronoi_n_sphere_radius_1d(float3 coord,
   outW = 0;
   outRadius = distance(closestPointToClosestPoint, closestPoint) / 2.0;
 }
+
+/* **** 2D Voronoi **** */
 
 float voronoi_distance(float2 a, float2 b, float metric, float exponent)
 {
@@ -499,6 +522,8 @@ void node_tex_voronoi_n_sphere_radius_2d(float3 coord,
   outW = 0;
   outRadius = distance(closestPointToClosestPoint, closestPoint) / 2.0;
 }
+
+/* **** 3D Voronoi **** */
 
 float voronoi_distance(float3 a, float3 b, float metric, float exponent)
 {
@@ -797,6 +822,8 @@ void node_tex_voronoi_n_sphere_radius_3d(float3 coord,
   outW = 0;
   outRadius = distance(closestPointToClosestPoint, closestPoint) / 2.0;
 }
+
+/* **** 4D Voronoi **** */
 
 float voronoi_distance(float4 a, float4 b, float metric, float exponent)
 {

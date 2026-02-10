@@ -1,3 +1,7 @@
+// Adapted by Andrés Botero from Blender source code
+// as such, this file is licensed under GPL.
+
+
 #pragma once
 #include "BlenderCommonHash.ush"
 #include "BlenderMaterialNoise.ush"
@@ -17,6 +21,7 @@ float calc_wave(float3 p,
                 int rings_dir,
                 int wave_profile)
 {
+  /* Prevent precision issues on unit coordinates. */
   p = (p + 0.000001) * 0.999999;
 
   float n;
