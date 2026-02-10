@@ -21,6 +21,7 @@ engine_versions=(
     "5.4"
     "5.5"
     "5.6"
+	"5.7"
 )
 
 search_path="$HOME/bin"

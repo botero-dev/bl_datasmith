@@ -19,7 +19,7 @@ If you install the plugin in the engine directory, you won't need to add it to
 the projects to enable it, but other people that work on the projects will need
 to install it into their engines as well.
 
-Visit https://github.com/0xafbf/bl_datasmith for updates and more information
+Visit https://github.com/botero-dev/bl_datasmith for updates and more information
 about the plugin.
 
 Copyright 2023-2025 Andrés Botero

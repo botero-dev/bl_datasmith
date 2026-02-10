@@ -16,7 +16,7 @@ bl_info = {
 	"warning": "",
 	"category": "Import-Export",
 	"support": "COMMUNITY",
-	"wiki_url": "https://github.com/0xafbf/blender-datasmith-export",
+	"wiki_url": "https://github.com/botero-dev/bl_datasmith",
 }
 
 

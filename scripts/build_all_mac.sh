@@ -25,6 +25,7 @@ engine_versions=(
     "UE_5.4"
     "UE_5.5"
     "UE_5.6"
+	"UE_5.7"
 )
 
 # Iterate over the list and call echo with each string

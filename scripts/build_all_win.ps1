@@ -14,6 +14,7 @@ $versions = @(
     "UE_5.4"
     "UE_5.5"
     "UE_5.6"
+    "UE_5.7"
 )
 
 foreach ( $version in $versions ) {

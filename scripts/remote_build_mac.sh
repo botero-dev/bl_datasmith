@@ -12,8 +12,8 @@ rm -rf $build_path
 mkdir -p $build_path
 
 
-echo git clone "git@github.com:0xafbf/bl_datasmith.git" "$build_path"
-git clone "git@github.com:0xafbf/bl_datasmith.git" "$build_path"
+echo git clone "git@github.com:botero-dev/bl_datasmith.git" "$build_path"
+git clone "git@github.com:botero-dev/bl_datasmith.git" "$build_path"
 pushd $build_path
 
 git checkout "$branch_name"
