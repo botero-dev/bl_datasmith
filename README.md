@@ -62,8 +62,9 @@ Support
 To support the project, please consider joining as a Github Sponsor clicking the
 button in the sidebar.
 
-To get support for the plugin, join the [https://discord.gg/JnuAJcEwCb](Discord
-server). 
+To get support for the plugin, join the [1](Discord server).
+
+[1]: https://discord.gg/JnuAJcEwCb
 
 If you identified a bug and you have consistent repro steps, you can submit an
 issue in Github. Please attach any project files that can be used to reproduce
