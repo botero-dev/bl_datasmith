@@ -12,8 +12,8 @@ ssh-add
 mkdir -p "build"
 
 username="abotero"
-host_win="abotero-haswell"
-host_mac="abotero-m1"
+host_win="ab-haswell"
+host_mac="ab-m1"
 
 branch_name=$(git rev-parse --abbrev-ref HEAD)
 
