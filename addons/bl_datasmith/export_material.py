@@ -550,7 +550,12 @@ def get_expression(field, exp_list, force_default=False, skip_default_warn=False
 
 
 def exp_from_cache(cached_node, socket_name):
-	output_index = cached_node[1].index(socket_name)
+	socket_names = cached_node[1]
+	# Blender 5.0 changed "Fac" sockets label to "Factor"
+	if socket_name == "Factor" and "Fac" in socket_names:
+		output_index = socket_names.index("Fac")
+	else:
+		output_index = socket_names.index(socket_name)
 	return {"expression": cached_node[0], "OutputIndex": output_index}
 
 
