@@ -1,0 +1,26 @@
+Copyright (c) Andrés Botero
+
+This project contains files licensed under multiple licenses:
+
+The contents of the `addons/bl_datasmith` directory are licensed under the
+Affero GNU General Public License (AGPL). You will find a full copy of the
+license in that folder and packaged distributions, but these are the main
+takeaways:
+
+- All kind of redistribution of the software should also redistribute the source
+  code of the add-on and linked software.
+- This also includes cases where the software is distributed by network usage.
+
+The contents of the `ue_template/Plugins/DatasmithBlenderContent` directory are
+licensed under the MIT License. You will find a copy of the license in the
+directory and in packaged distributions. This is the important stuff:
+
+- You should not misrepresent the origin of the plugin or claim it as yours.
+- You should credit the usage of the plugin somewhere in your product.
+- Software is provided as is, free of charge, under no warranty.
+
+Some code in `ue_template/Plugins/DatasmithBlenderContent/Shaders` was adapted
+from Blender sources into HLSL format for Unreal Engine. Blender source code is
+GPL which means all the package should be licensed as GPL. If you can't abide to
+GPL license I guess you could remove those files from the package. I am not sure
+about this, I'm not a laywer.
