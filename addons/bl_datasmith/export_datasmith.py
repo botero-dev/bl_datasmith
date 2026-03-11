@@ -525,6 +525,7 @@ def fill_obj_mesh(obj_dict, bl_obj):
 				fields.append('\t<material id="%i" name="%s"/>\n' % (idx, safe_name))
 
 
+
 def fill_obj_light(obj_dict, target):
 	obj_dict["type"] = "Light"
 
@@ -1206,6 +1207,33 @@ def collect_anims(context, new_iterator: bool, use_instanced_meshes: bool):
 
 datasmith_context = None
 
+def collect_object_metadata(bl_obj):
+	name = sanitize_name(bl_obj.name)
+
+	# Create MetaData node
+	meta_node = Node("MetaData", {
+		"name": name,
+		"reference": f"Actor.{name}"
+	})
+
+	for key in bl_obj.keys():
+		if key == "_RNA_UI":
+			continue
+		value = bl_obj[key]
+		value_str = str(value)
+
+		kv = Node("KeyValueProperty", {
+			"name": key,
+			"type": "String",
+			"val": value_str
+		})
+
+		meta_node.push(kv)
+
+	# Store it so collect_and_save() can push it later
+	datasmith_context["metadata"].append(meta_node)
+
+
 
 def collect_and_save(context, args, save_path):
 	start_time = time.monotonic()
@@ -1237,6 +1265,10 @@ def collect_and_save(context, args, save_path):
 	objects = []
 	log.info("USE NEW OBJECT ITERATOR")
 	obj_output = collect_depsgraph(objects, use_instanced_meshes, selected_only)
+
+	# Collect metadata for each object
+	for bl_obj in bpy.context.scene.objects:
+		collect_object_metadata(bl_obj)
 
 	anims = []
 	if export_animations:
