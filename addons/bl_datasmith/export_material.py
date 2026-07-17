@@ -1169,7 +1169,7 @@ def exp_uvmap(socket, exp_list):
 	m = material_owner.data
 	if type(m) is bpy.types.Mesh:
 		for idx, uv in enumerate(m.uv_layers):
-			if uv.name == id:
+			if uv.name == socket.node.uv_map:
 				uv_index = idx
 	return exp_texcoord(exp_list, uv_index)
 
@@ -2454,6 +2454,8 @@ VECT_MATH_SAME_AS_SCALAR = {
 	"MULTIPLY",
 	"DIVIDE",
 	"ABSOLUTE",
+	"POWER",
+	"SIGN",
 	"MINIMUM",
 	"MAXIMUM",
 	"FLOOR",
@@ -2473,6 +2475,9 @@ VECT_MATH_NODES = {
 	"FRACTION": (1, "Frac"),
 }
 VECT_MATH_FUNCTIONS = {  # tuples are (input_count, path)
+	"MULTIPLY_ADD": (3, "/DatasmithBlenderContent/MaterialFunctions/VectMultiplyAdd"),
+	"REFRACT": (3, "/DatasmithBlenderContent/MaterialFunctions/VectRefract"),
+	"FACEFORWARD": (3, "/DatasmithBlenderContent/MaterialFunctions/VectFaceforward"),
 	"WRAP": (3, "/DatasmithBlenderContent/MaterialFunctions/VectWrap"),
 	"SNAP": (2, "/DatasmithBlenderContent/MaterialFunctions/VectSnap"),
 	"PROJECT": (2, "/DatasmithBlenderContent/MaterialFunctions/VectProject"),
